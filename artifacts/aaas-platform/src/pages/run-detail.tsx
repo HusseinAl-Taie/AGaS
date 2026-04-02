@@ -206,7 +206,7 @@ export default function RunDetailPage() {
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Box className="w-4 h-4" />
-              <span>Agent: <Link href={`/agents/${run.agentId}`} className="text-primary hover:underline">{(run as Record<string, unknown> & { agent?: { name: string } }).agent?.name || run.agentId}</Link></span>
+              <span>Agent: <Link href={`/agents/${run.agentId}`} className="text-primary hover:underline">{run.agentId}</Link></span>
               <span className="mx-2">•</span>
               <span>Trigger: {run.trigger}</span>
             </div>
