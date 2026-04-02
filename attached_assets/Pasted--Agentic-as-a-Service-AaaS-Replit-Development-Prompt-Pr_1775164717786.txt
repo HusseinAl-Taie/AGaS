@@ -1,0 +1,324 @@
+# Agentic as a Service (AaaS) — Replit Development Prompt
+
+## Project Overview
+
+Build an **Agentic as a Service (AaaS) platform** — a multi-tenant SaaS where customers can create, configure, deploy, and monitor autonomous AI agents that execute multi-step workflows on their behalf. Agents connect to external tools via MCP (Model Context Protocol), run in isolated sandboxes, and report back with full observability.
+
+-----
+
+## Tech Stack
+
+- **Runtime:** Node.js 20+ with TypeScript
+- **Framework:** Hono (lightweight, edge-compatible HTTP framework)
+- **Database:** PostgreSQL (via Drizzle ORM)
+- **Queue/Jobs:** BullMQ with Redis
+- **Auth:** Better Auth or Lucia Auth (session-based, multi-tenant)
+- **AI:** Anthropic Claude API (claude-sonnet-4-20250514) for agent reasoning
+- **Tool Protocol:** MCP (Model Context Protocol) for agent-to-tool communication
+- **Frontend:** React + Tailwind CSS + shadcn/ui
+- **Realtime:** Server-Sent Events (SSE) for live agent execution streaming
+- **Storage:** S3-compatible object storage for agent run artefacts
+
+-----
+
+## Core Architecture
+
+### 1. Data Model (PostgreSQL via Drizzle)
+
+```
+tenants
+├── id (uuid, PK)
+├── name (text)
+├── plan (enum: free, pro, enterprise)
+├── api_key_hash (text)
+├── created_at (timestamp)
+└── settings (jsonb) — rate limits, budget caps, defaults
+
+users
+├── id (uuid, PK)
+├── tenant_id (uuid, FK → tenants)
+├── email (text, unique)
+├── role (enum: owner, admin, member)
+└── created_at (timestamp)
+
+agents
+├── id (uuid, PK)
+├── tenant_id (uuid, FK → tenants)
+├── name (text)
+├── description (text)
+├── system_prompt (text) — the agent's core instructions
+├── model (text, default: 'claude-sonnet-4-20250514')
+├── tools (jsonb) — array of MCP server configs + tool permissions
+├── max_steps (int, default: 20) — circuit breaker
+├── max_budget_cents (int, default: 100) — per-run cost cap
+├── approval_mode (enum: auto, human_in_loop)
+├── status (enum: active, paused, archived)
+├── created_at (timestamp)
+└── updated_at (timestamp)
+
+agent_runs
+├── id (uuid, PK)
+├── agent_id (uuid, FK → agents)
+├── tenant_id (uuid, FK → tenants)
+├── trigger (enum: manual, api, schedule, webhook)
+├── input (jsonb) — the task/prompt given to the agent
+├── status (enum: queued, running, awaiting_approval, completed, failed, cancelled, budget_exceeded)
+├── output (jsonb) — final result
+├── steps (jsonb[]) — array of { step_number, thought, tool_calls, tool_results, tokens_used }
+├── total_tokens (int)
+├── cost_cents (int)
+├── started_at (timestamp)
+├── completed_at (timestamp)
+├── error (text, nullable)
+└── created_at (timestamp)
+
+mcp_connections
+├── id (uuid, PK)
+├── tenant_id (uuid, FK → tenants)
+├── name (text) — e.g. "Our Jira", "Team Slack"
+├── server_url (text) — MCP server SSE endpoint
+├── auth_config (jsonb, encrypted) — credentials for the MCP server
+├── status (enum: active, inactive, error)
+└── created_at (timestamp)
+
+webhooks
+├── id (uuid, PK)
+├── tenant_id (uuid, FK → tenants)
+├── agent_id (uuid, FK → agents)
+├── url (text)
+├── events (text[]) — e.g. ['run.completed', 'run.failed', 'approval.required']
+├── secret_hash (text)
+└── created_at (timestamp)
+
+scheduled_triggers
+├── id (uuid, PK)
+├── agent_id (uuid, FK → agents)
+├── tenant_id (uuid, FK → tenants)
+├── cron_expression (text)
+├── input_template (jsonb) — default input for scheduled runs
+├── enabled (boolean)
+└── next_run_at (timestamp)
+```
+
+### 2. Agent Execution Engine
+
+This is the core of the platform. Build as a **BullMQ worker** that processes agent runs:
+
+```
+AgentRunner (class):
+  constructor(run: AgentRun, agent: Agent, mcpConnections: McpConnection[])
+
+  async execute():
+    1. Initialise conversation history with agent.system_prompt
+    2. Add user input from run.input
+    3. Loop (max agent.max_steps):
+       a. Call Claude API with current messages + available tools
+       b. If response contains tool_use:
+          - Check approval_mode: if human_in_loop, pause and set status=awaiting_approval
+          - Execute tool call via MCP client
+          - Append tool_result to messages
+          - Record step in run.steps[]
+       c. If response is end_turn (text only, no tool calls):
+          - Save output, mark run as completed
+          - Break loop
+       d. Track token usage, check against max_budget_cents
+          - If budget exceeded, halt and set status=budget_exceeded
+    4. On error: save error message, set status=failed
+    5. Fire webhooks for relevant events
+    6. Return final output
+```
+
+**MCP Client Integration:**
+
+- For each tool call, route to the correct MCP server based on tool name → mcp_connection mapping
+- Use SSE transport to connect to MCP servers
+- Handle tool call timeouts (30s default)
+- Log all tool inputs/outputs for observability
+
+### 3. API Routes (Hono)
+
+```
+Authentication:
+  POST   /api/auth/register        — create tenant + first user
+  POST   /api/auth/login            — session login
+  POST   /api/auth/api-key          — generate/rotate API key
+
+Agents:
+  GET    /api/agents                — list agents for tenant
+  POST   /api/agents                — create agent
+  GET    /api/agents/:id            — get agent details
+  PUT    /api/agents/:id            — update agent
+  DELETE /api/agents/:id            — archive agent
+
+Agent Runs:
+  POST   /api/agents/:id/run        — trigger a run (returns run_id)
+  GET    /api/runs                   — list runs (filterable by agent, status, date)
+  GET    /api/runs/:id               — get run details + steps
+  GET    /api/runs/:id/stream        — SSE stream of live execution steps
+  POST   /api/runs/:id/approve       — approve a pending tool call (human-in-loop)
+  POST   /api/runs/:id/cancel        — cancel a running agent
+
+MCP Connections:
+  GET    /api/mcp-connections        — list connections
+  POST   /api/mcp-connections        — add MCP server connection
+  POST   /api/mcp-connections/:id/test — test connection & list available tools
+  DELETE /api/mcp-connections/:id    — remove connection
+
+Webhooks:
+  GET    /api/webhooks               — list webhooks
+  POST   /api/webhooks               — register webhook
+  DELETE /api/webhooks/:id           — remove webhook
+
+Schedules:
+  GET    /api/schedules              — list scheduled triggers
+  POST   /api/schedules              — create schedule
+  PUT    /api/schedules/:id          — update schedule
+  DELETE /api/schedules/:id          — delete schedule
+
+Dashboard/Analytics:
+  GET    /api/analytics/usage        — token usage, cost, run counts over time
+  GET    /api/analytics/agents       — per-agent performance stats
+```
+
+### 4. Frontend Pages (React + Tailwind + shadcn/ui)
+
+```
+/login                    — auth page
+/dashboard                — overview: recent runs, usage stats, quick actions
+/agents                   — agent list with status indicators
+/agents/new               — agent creation wizard (name, prompt, tools, settings)
+/agents/:id               — agent detail: config, recent runs, edit
+/agents/:id/runs          — run history for this agent
+/runs/:id                 — run detail: step-by-step execution trace with timing
+/runs/:id/live            — live execution view (SSE-powered)
+/connections              — MCP connection management
+/settings                 — tenant settings, API keys, billing, webhooks
+```
+
+**Key UI Components:**
+
+- **Agent Builder** — form with system prompt editor (with syntax highlighting), tool selector (from connected MCP servers), and settings panel
+- **Execution Trace Viewer** — timeline/accordion showing each step: thought → tool call → tool result → next thought. Expandable JSON views.
+- **Live Run Monitor** — real-time SSE feed showing agent progress with a “Cancel” button
+- **Approval Queue** — list of runs awaiting human approval, with tool call details and approve/reject actions
+- **Usage Dashboard** — charts showing runs/day, tokens/day, cost/day, success rate
+
+-----
+
+## Implementation Phases
+
+### Phase 1: Foundation (Week 1-2)
+
+1. Project setup: TypeScript, Hono, Drizzle, PostgreSQL, Redis
+1. Auth system: registration, login, API keys, tenant isolation
+1. Database schema: all tables above with migrations
+1. Basic CRUD API for agents and MCP connections
+1. Simple frontend: login, agent list, agent creation form
+
+### Phase 2: Execution Engine (Week 3-4)
+
+1. AgentRunner class with Claude API integration
+1. BullMQ job queue for async run processing
+1. MCP client: connect to MCP servers, discover tools, execute tool calls
+1. Step-by-step logging to agent_runs.steps
+1. Budget tracking and circuit breaker (max_steps, max_budget_cents)
+1. Run API: trigger, status, detail endpoints
+1. Frontend: run history, execution trace viewer
+
+### Phase 3: Real-time & Control (Week 5-6)
+
+1. SSE streaming for live execution monitoring
+1. Human-in-the-loop approval flow
+1. Run cancellation
+1. Webhook system for run events
+1. Frontend: live monitor, approval queue
+
+### Phase 4: Scheduling & Analytics (Week 7-8)
+
+1. Cron-based scheduled triggers (node-cron or BullMQ repeatable jobs)
+1. Analytics aggregation: usage stats, per-agent metrics
+1. Usage dashboard with charts (recharts)
+1. Rate limiting per tenant/plan
+1. Frontend: schedules management, analytics dashboard
+
+### Phase 5: Polish & Launch Prep (Week 9-10)
+
+1. Agent templates: 3-5 pre-built agents (email triage, code review, data summariser, incident responder, content drafter)
+1. Onboarding flow: guided setup wizard
+1. API documentation (OpenAPI/Swagger)
+1. Error handling hardening
+1. Basic billing integration (Stripe usage-based metering)
+
+-----
+
+## Key Design Decisions
+
+1. **Tenant isolation:** All queries MUST filter by tenant_id. Use Drizzle middleware or a wrapper to enforce this. Never trust client-supplied tenant_id — derive from session.
+1. **Agent execution is async:** POST /agents/:id/run immediately returns a run_id. The client polls or subscribes via SSE. Never block HTTP requests on agent execution.
+1. **MCP tool permissions:** When creating an agent, the tenant selects which MCP connections and which specific tools (from those connections) the agent can access. Store as a whitelist in agents.tools.
+1. **Cost tracking:** Before each Claude API call, estimate cost from model pricing. Accumulate in the run. Halt if budget exceeded. Expose cost data in analytics.
+1. **Idempotency:** Agent runs should be idempotent — same input produces a new run with its own ID. Never mutate a completed run.
+1. **Secrets management:** MCP auth configs (tokens, keys) must be encrypted at rest (use AES-256-GCM with a KMS key or env-based encryption key). Never return raw secrets in API responses.
+
+-----
+
+## Environment Variables Required
+
+```
+DATABASE_URL=postgresql://...
+REDIS_URL=redis://...
+ANTHROPIC_API_KEY=sk-ant-...
+SESSION_SECRET=...
+ENCRYPTION_KEY=... (for MCP auth config encryption)
+STRIPE_SECRET_KEY=... (Phase 5)
+S3_ENDPOINT=... (for artefact storage)
+S3_ACCESS_KEY=...
+S3_SECRET_KEY=...
+S3_BUCKET=...
+```
+
+-----
+
+## Starter Agent Templates to Include
+
+1. **Email Triage Agent** — connects to Gmail MCP, reads unread emails, categorises by urgency, drafts replies for review
+1. **Code Review Agent** — takes a GitHub PR URL, analyses the diff, provides structured feedback
+1. **Data Summariser Agent** — accepts a CSV/JSON upload, analyses it, produces a summary report
+1. **Incident Responder Agent** — monitors a webhook for alerts, investigates via connected tools, drafts incident summaries
+1. **Content Drafter Agent** — takes a brief, researches via web search, produces a draft blog post or report
+
+-----
+
+## Non-Functional Requirements
+
+- **Response time:** API endpoints < 200ms (excluding agent execution)
+- **Agent execution:** Support runs up to 5 minutes (configurable per agent)
+- **Concurrency:** Handle 50 concurrent agent runs per tenant (pro plan)
+- **Uptime target:** 99.5%
+- **Data retention:** Agent run data retained for 90 days (configurable)
+
+-----
+
+## Start Building
+
+Begin with Phase 1. Set up the project structure as:
+
+```
+/src
+  /db          — Drizzle schema, migrations, connection
+  /auth        — authentication middleware, API key validation
+  /api         — Hono route handlers grouped by resource
+  /engine      — AgentRunner, MCP client, tool executor
+  /queue       — BullMQ worker setup, job definitions
+  /webhooks    — webhook dispatcher
+  /lib         — shared utilities (encryption, cost calculation, validation)
+/frontend
+  /src
+    /pages     — React pages
+    /components — reusable UI components
+    /hooks     — custom React hooks (useSSE, useAgent, etc.)
+    /lib       — API client, auth helpers
+/drizzle       — migration files
+```
+
+Start by implementing the database schema, auth, and the basic agent CRUD API. Then build the AgentRunner — this is the heart of the product. Get a single agent executing a multi-step task with one MCP tool before expanding further.
