@@ -31,7 +31,7 @@ export default function Dashboard() {
           setLocation(`/runs/${run.id}`);
         },
         onError: (err) => {
-          toast({ title: "Failed to trigger", description: err.error || "An error occurred", variant: "destructive" });
+          toast({ title: "Failed to trigger", description: err.message || "An error occurred", variant: "destructive" });
         }
       }
     );

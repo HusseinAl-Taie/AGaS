@@ -28,7 +28,7 @@ export default function AgentDetailPage() {
   });
 
   const { data: runs } = useListRuns({ agentId, limit: 10 }, {
-    query: { enabled: !!agentId }
+    query: { enabled: !!agentId, queryKey: getListRunsQueryKey({ agentId, limit: 10 }) }
   });
 
   const updateAgent = useUpdateAgent();
@@ -70,8 +70,8 @@ export default function AgentDetailPage() {
           ...editForm,
           maxSteps: Number(editForm.maxSteps),
           maxBudgetCents: Number(editForm.maxBudgetCents),
-          approvalMode: editForm.approvalMode as any,
-          status: editForm.status as any
+          approvalMode: editForm.approvalMode as "auto" | "human_in_loop",
+          status: editForm.status as "active" | "paused" | "archived"
         }
       },
       {
@@ -81,7 +81,7 @@ export default function AgentDetailPage() {
           queryClient.setQueryData(getGetAgentQueryKey(agentId), data);
         },
         onError: (err) => {
-          toast({ title: "Failed to update", description: err.error, variant: "destructive" });
+          toast({ title: "Failed to update", description: err.message, variant: "destructive" });
         }
       }
     );

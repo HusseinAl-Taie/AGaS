@@ -51,7 +51,7 @@ export default function ConnectionsPage() {
           queryClient.invalidateQueries({ queryKey: getListMcpConnectionsQueryKey() });
         },
         onError: (err) => {
-          toast({ title: "Failed to add connection", description: err.error, variant: "destructive" });
+          toast({ title: "Failed to add connection", description: err.message, variant: "destructive" });
         }
       }
     );
@@ -87,7 +87,7 @@ export default function ConnectionsPage() {
         },
         onError: (err) => {
           setTestingId(null);
-          toast({ title: "Test failed", description: err.error, variant: "destructive" });
+          toast({ title: "Test failed", description: err.message, variant: "destructive" });
         }
       }
     );

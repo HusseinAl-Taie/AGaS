@@ -51,7 +51,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    if (!isLoading && error && (error as any).status === 403) {
+    if (!isLoading && error && (error as { status?: number }).status === 403) {
       setLocation("/onboard");
     }
   }, [isLoading, error, setLocation]);

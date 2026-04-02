@@ -44,7 +44,7 @@ export default function OnboardPage() {
         onError: (error) => {
           toast({ 
             title: "Error setting up account", 
-            description: error.error || "An unknown error occurred", 
+            description: error.message || "An unknown error occurred", 
             variant: "destructive" 
           });
         }

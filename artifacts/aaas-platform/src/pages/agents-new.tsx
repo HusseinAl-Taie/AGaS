@@ -122,7 +122,7 @@ export default function AgentsNewPage() {
           setLocation(`/agents/${agent.id}`);
         },
         onError: (err) => {
-          toast({ title: "Creation failed", description: err.error || "An error occurred", variant: "destructive" });
+          toast({ title: "Creation failed", description: err.message || "An error occurred", variant: "destructive" });
         }
       }
     );
