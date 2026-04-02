@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, agentRunsTable, agentsTable } from "@workspace/db";
+import { db, agentRunsTable, agentsTable, runStatusEnum } from "@workspace/db";
 import { eq, and, desc, count } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+
+type RunStatus = (typeof runStatusEnum.enumValues)[number];
 
 const router: IRouter = Router();
 
@@ -13,7 +15,9 @@ router.get("/runs", requireAuth, async (req, res): Promise<void> => {
 
   const conditions = [eq(agentRunsTable.tenantId, req.tenantId)];
   if (agentId) conditions.push(eq(agentRunsTable.agentId, agentId));
-  if (status) conditions.push(eq(agentRunsTable.status, status as any));
+  if (status && (runStatusEnum.enumValues as readonly string[]).includes(status)) {
+    conditions.push(eq(agentRunsTable.status, status as RunStatus));
+  }
 
   const [runs, totalResult] = await Promise.all([
     db

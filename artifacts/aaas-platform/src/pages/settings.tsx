@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { useGetMe, useListWebhooks, useCreateWebhook, useDeleteWebhook, getListWebhooksQueryKey } from "@workspace/api-client-react";
+import { useGetMe, useListWebhooks, useCreateWebhook, useDeleteWebhook, getListWebhooksQueryKey, customFetch } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,12 +32,7 @@ export default function SettingsPage() {
   const [visibleApiKey, setVisibleApiKey] = useState<string | null>(null);
 
   const rotateApiKey = useMutation({
-    mutationFn: async () => {
-      const resp = await fetch("/aaas-platform/api/auth/api-key/rotate", { method: "POST", credentials: "include" });
-      if (!resp.ok) throw new Error("Failed to rotate API key");
-      const data = await resp.json() as { apiKey: string };
-      return data;
-    },
+    mutationFn: () => customFetch<{ apiKey: string }>("/api/auth/api-key/rotate", { method: "POST" }),
     onSuccess: (data) => {
       setVisibleApiKey(data.apiKey);
       toast({ title: "New API key generated", description: "Copy it now — it won't be shown again." });

@@ -100,14 +100,20 @@ router.put("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  type AgentUpdate = Partial<typeof agentsTable.$inferInsert>;
-  const updates: AgentUpdate = {};
-  type AgentUpdateKey = keyof AgentUpdate;
-  const fields: AgentUpdateKey[] = ["name", "description", "systemPrompt", "model", "tools", "maxSteps", "maxBudgetCents", "approvalMode", "status"];
-  for (const field of fields) {
-    if (req.body[field] !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (updates as Record<AgentUpdateKey, unknown>)[field] = req.body[field];
+  type AgentInsert = typeof agentsTable.$inferInsert;
+  const updates: Partial<AgentInsert> = {};
+  if (req.body.name !== undefined) updates.name = req.body.name as AgentInsert["name"];
+  if (req.body.description !== undefined) updates.description = req.body.description as AgentInsert["description"];
+  if (req.body.systemPrompt !== undefined) updates.systemPrompt = req.body.systemPrompt as AgentInsert["systemPrompt"];
+  if (req.body.model !== undefined) updates.model = req.body.model as AgentInsert["model"];
+  if (req.body.tools !== undefined) updates.tools = req.body.tools as AgentInsert["tools"];
+  if (req.body.maxSteps !== undefined) updates.maxSteps = req.body.maxSteps as AgentInsert["maxSteps"];
+  if (req.body.maxBudgetCents !== undefined) updates.maxBudgetCents = req.body.maxBudgetCents as AgentInsert["maxBudgetCents"];
+  if (req.body.approvalMode !== undefined) updates.approvalMode = req.body.approvalMode as AgentInsert["approvalMode"];
+  if (req.body.status !== undefined) {
+    const validAgentStatuses: AgentStatus[] = ["active", "paused", "archived"];
+    if (validAgentStatuses.includes(req.body.status as AgentStatus)) {
+      updates.status = req.body.status as AgentStatus;
     }
   }
 
