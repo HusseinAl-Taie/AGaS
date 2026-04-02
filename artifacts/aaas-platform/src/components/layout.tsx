@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   LogOut,
   Settings,
+  ShieldAlert,
   User as UserIcon,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -27,6 +28,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Agents", href: "/agents", icon: Box },
   { name: "Runs", href: "/runs", icon: Activity },
+  { name: "Approvals", href: "/approvals", icon: ShieldAlert },
   { name: "Connections", href: "/connections", icon: Cable },
   { name: "Settings", href: "/settings", icon: Settings },
 ];

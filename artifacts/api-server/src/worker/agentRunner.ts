@@ -21,6 +21,7 @@ interface RunStep {
 interface PendingState {
   messages: Anthropic.MessageParam[];
   pendingToolUse: Anthropic.ToolUseBlock[];
+  turnCount: number;
 }
 
 // Approximate cost per token in cents for Claude Sonnet
@@ -74,12 +75,6 @@ export class AgentRunner {
     let totalTokens = run.totalTokens ?? 0;
     let costCents = run.costCents ?? 0;
 
-    // Track model turns (not raw step-object count) for maxSteps enforcement.
-    // Each model call = 1 turn; count prior turns from thought/final_answer steps.
-    let turnCount = steps.filter(
-      (s) => s.type === "thought" || s.type === "final_answer"
-    ).length;
-
     // Load MCP connections
     const toolWhitelist = Array.isArray(agent.tools) ? (agent.tools as string[]) : [];
     const mcpClients = await this.loadMcpClients(toolWhitelist);
@@ -90,9 +85,13 @@ export class AgentRunner {
       input_schema: t.inputSchema as Anthropic.Tool["input_schema"],
     }));
 
-    // Determine starting messages — either fresh or resumed from saved state
+    // Determine starting messages and turn count — either fresh or resumed from saved state
     let messages: Anthropic.MessageParam[];
     let pendingToolUse: Anthropic.ToolUseBlock[] | null = null;
+
+    // Track model turns explicitly. Persisted in PendingState.turnCount across HITL pauses
+    // so we don't infer from step array shape (which can inflate counts).
+    let turnCount = 0;
 
     const savedOutput = run.output as Record<string, unknown> | null;
     if (
@@ -104,6 +103,8 @@ export class AgentRunner {
       // Resuming from human_in_loop approval — tool calls were saved
       messages = savedOutput.messages as Anthropic.MessageParam[];
       pendingToolUse = savedOutput.pendingToolUse as Anthropic.ToolUseBlock[];
+      // Restore explicit turn count from saved state (avoids step-type inference)
+      turnCount = typeof savedOutput.turnCount === "number" ? savedOutput.turnCount : 0;
     } else {
       // Fresh start
       const inputData = (run.input as Record<string, unknown>) ?? {};
@@ -213,6 +214,7 @@ export class AgentRunner {
           const pendingState: PendingState = {
             messages: [...messages, { role: "assistant", content: assistantContent }],
             pendingToolUse: toolUseBlocks,
+            turnCount, // persist so resume doesn't reset the counter
           };
 
           await db
