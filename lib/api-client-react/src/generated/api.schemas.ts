@@ -250,6 +250,14 @@ export interface CreateMcpConnectionRequest {
   authConfig?: CreateMcpConnectionRequestAuthConfig;
 }
 
+export type UpdateMcpConnectionRequestAuthConfig = { [key: string]: unknown };
+
+export interface UpdateMcpConnectionRequest {
+  name?: string;
+  serverUrl?: string;
+  authConfig?: UpdateMcpConnectionRequestAuthConfig;
+}
+
 export type McpConnectionTestResultToolsItem = {
   name: string;
   description?: string;
@@ -281,6 +289,18 @@ export interface CreateWebhookRequest {
   agentId?: string;
   events: string[];
   secret: string;
+}
+
+export interface UpdateWebhookRequest {
+  url?: string;
+  agentId?: string;
+  events?: string[];
+  secret?: string;
+}
+
+export interface ApiKeyRotateResponse {
+  /** The new API key (shown only once) */
+  apiKey: string;
 }
 
 export type ScheduleInputTemplate = { [key: string]: unknown };

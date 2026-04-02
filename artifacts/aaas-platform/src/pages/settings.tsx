@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { useGetMe, useListWebhooks, useCreateWebhook, useDeleteWebhook, getListWebhooksQueryKey, customFetch } from "@workspace/api-client-react";
+import { useGetMe, useListWebhooks, useCreateWebhook, useDeleteWebhook, getListWebhooksQueryKey, useRotateApiKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building, Key, Webhook as WebhookIcon, Trash2, Copy, Check, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
 export default function SettingsPage() {
@@ -31,14 +31,15 @@ export default function SettingsPage() {
   const [copiedKey, setCopiedKey] = useState(false);
   const [visibleApiKey, setVisibleApiKey] = useState<string | null>(null);
 
-  const rotateApiKey = useMutation({
-    mutationFn: () => customFetch<{ apiKey: string }>("/api/auth/api-key/rotate", { method: "POST" }),
-    onSuccess: (data) => {
-      setVisibleApiKey(data.apiKey);
-      toast({ title: "New API key generated", description: "Copy it now — it won't be shown again." });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to generate API key.", variant: "destructive" });
+  const rotateApiKey = useRotateApiKey({
+    mutation: {
+      onSuccess: (data) => {
+        setVisibleApiKey(data.apiKey);
+        toast({ title: "New API key generated", description: "Copy it now — it won't be shown again." });
+      },
+      onError: () => {
+        toast({ title: "Error", description: "Failed to generate API key.", variant: "destructive" });
+      }
     }
   });
 

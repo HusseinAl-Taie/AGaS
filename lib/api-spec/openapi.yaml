@@ -88,6 +88,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/api-key/rotate:
+    post:
+      operationId: rotateApiKey
+      tags: [auth]
+      summary: Generate a new API key for the tenant
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: New API key generated (shown once)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyRotateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /agents:
     get:
       operationId: listAgents
@@ -433,6 +454,70 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /mcp-connections/{connectionId}:
+    get:
+      operationId: getMcpConnection
+      tags: [mcp-connections]
+      summary: Get an MCP connection by ID
+      security:
+        - clerkSession: []
+      parameters:
+        - name: connectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: MCP connection detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpConnection"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      operationId: updateMcpConnection
+      tags: [mcp-connections]
+      summary: Update an MCP connection
+      security:
+        - clerkSession: []
+      parameters:
+        - name: connectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMcpConnectionRequest"
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpConnection"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
     delete:
       operationId: deleteMcpConnection
       tags: [mcp-connections]
@@ -528,6 +613,70 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /webhooks/{webhookId}:
+    get:
+      operationId: getWebhook
+      tags: [webhooks]
+      summary: Get a webhook by ID
+      security:
+        - clerkSession: []
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Webhook detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      operationId: updateWebhook
+      tags: [webhooks]
+      summary: Update a webhook
+      security:
+        - clerkSession: []
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWebhookRequest"
+      responses:
+        "200":
+          description: Webhook updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
     delete:
       operationId: deleteWebhook
       tags: [webhooks]
@@ -1035,6 +1184,17 @@ components:
         - name
         - serverUrl
 
+    UpdateMcpConnectionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        serverUrl:
+          type: string
+        authConfig:
+          type: object
+          additionalProperties: true
+
     McpConnectionTestResult:
       type: object
       properties:
@@ -1109,6 +1269,29 @@ components:
         - url
         - events
         - secret
+
+    UpdateWebhookRequest:
+      type: object
+      properties:
+        url:
+          type: string
+        agentId:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        secret:
+          type: string
+
+    ApiKeyRotateResponse:
+      type: object
+      properties:
+        apiKey:
+          type: string
+          description: The new API key (shown only once)
+      required:
+        - apiKey
 
     Schedule:
       type: object

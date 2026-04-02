@@ -23,6 +23,7 @@ import type {
   AgentRun,
   AgentRunDetail,
   AgentRunList,
+  ApiKeyRotateResponse,
   CreateAgentRequest,
   CreateMcpConnectionRequest,
   CreateScheduleRequest,
@@ -40,7 +41,9 @@ import type {
   ScheduleList,
   TriggerRunRequest,
   UpdateAgentRequest,
+  UpdateMcpConnectionRequest,
   UpdateScheduleRequest,
+  UpdateWebhookRequest,
   UsageAnalytics,
   UserWithTenant,
   Webhook,
@@ -279,6 +282,87 @@ export const useOnboardUser = <
   TContext
 > => {
   return useMutation(getOnboardUserMutationOptions(options));
+};
+
+/**
+ * @summary Generate a new API key for the tenant
+ */
+export const getRotateApiKeyUrl = () => {
+  return `/api/auth/api-key/rotate`;
+};
+
+export const rotateApiKey = async (
+  options?: RequestInit,
+): Promise<ApiKeyRotateResponse> => {
+  return customFetch<ApiKeyRotateResponse>(getRotateApiKeyUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRotateApiKeyMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rotateApiKey>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof rotateApiKey>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["rotateApiKey"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof rotateApiKey>>,
+    void
+  > = () => {
+    return rotateApiKey(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RotateApiKeyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof rotateApiKey>>
+>;
+
+export type RotateApiKeyMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Generate a new API key for the tenant
+ */
+export const useRotateApiKey = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rotateApiKey>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof rotateApiKey>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getRotateApiKeyMutationOptions(options));
 };
 
 /**
@@ -1304,6 +1388,183 @@ export const useCreateMcpConnection = <
 };
 
 /**
+ * @summary Get an MCP connection by ID
+ */
+export const getGetMcpConnectionUrl = (connectionId: string) => {
+  return `/api/mcp-connections/${connectionId}`;
+};
+
+export const getMcpConnection = async (
+  connectionId: string,
+  options?: RequestInit,
+): Promise<McpConnection> => {
+  return customFetch<McpConnection>(getGetMcpConnectionUrl(connectionId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetMcpConnectionQueryKey = (connectionId: string) => {
+  return [`/api/mcp-connections/${connectionId}`] as const;
+};
+
+export const getGetMcpConnectionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMcpConnection>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  connectionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMcpConnection>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMcpConnectionQueryKey(connectionId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMcpConnection>>
+  > = ({ signal }) =>
+    getMcpConnection(connectionId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!connectionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMcpConnection>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMcpConnectionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMcpConnection>>
+>;
+export type GetMcpConnectionQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get an MCP connection by ID
+ */
+
+export function useGetMcpConnection<
+  TData = Awaited<ReturnType<typeof getMcpConnection>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  connectionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMcpConnection>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMcpConnectionQueryOptions(connectionId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update an MCP connection
+ */
+export const getUpdateMcpConnectionUrl = (connectionId: string) => {
+  return `/api/mcp-connections/${connectionId}`;
+};
+
+export const updateMcpConnection = async (
+  connectionId: string,
+  updateMcpConnectionRequest: UpdateMcpConnectionRequest,
+  options?: RequestInit,
+): Promise<McpConnection> => {
+  return customFetch<McpConnection>(getUpdateMcpConnectionUrl(connectionId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateMcpConnectionRequest),
+  });
+};
+
+export const getUpdateMcpConnectionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMcpConnection>>,
+    TError,
+    { connectionId: string; data: BodyType<UpdateMcpConnectionRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateMcpConnection>>,
+  TError,
+  { connectionId: string; data: BodyType<UpdateMcpConnectionRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateMcpConnection"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateMcpConnection>>,
+    { connectionId: string; data: BodyType<UpdateMcpConnectionRequest> }
+  > = (props) => {
+    const { connectionId, data } = props ?? {};
+
+    return updateMcpConnection(connectionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateMcpConnectionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateMcpConnection>>
+>;
+export type UpdateMcpConnectionMutationBody =
+  BodyType<UpdateMcpConnectionRequest>;
+export type UpdateMcpConnectionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update an MCP connection
+ */
+export const useUpdateMcpConnection = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMcpConnection>>,
+    TError,
+    { connectionId: string; data: BodyType<UpdateMcpConnectionRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateMcpConnection>>,
+  TError,
+  { connectionId: string; data: BodyType<UpdateMcpConnectionRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateMcpConnectionMutationOptions(options));
+};
+
+/**
  * @summary Remove an MCP connection
  */
 export const getDeleteMcpConnectionUrl = (connectionId: string) => {
@@ -1633,6 +1894,180 @@ export const useCreateWebhook = <
   TContext
 > => {
   return useMutation(getCreateWebhookMutationOptions(options));
+};
+
+/**
+ * @summary Get a webhook by ID
+ */
+export const getGetWebhookUrl = (webhookId: string) => {
+  return `/api/webhooks/${webhookId}`;
+};
+
+export const getWebhook = async (
+  webhookId: string,
+  options?: RequestInit,
+): Promise<Webhook> => {
+  return customFetch<Webhook>(getGetWebhookUrl(webhookId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetWebhookQueryKey = (webhookId: string) => {
+  return [`/api/webhooks/${webhookId}`] as const;
+};
+
+export const getGetWebhookQueryOptions = <
+  TData = Awaited<ReturnType<typeof getWebhook>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  webhookId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getWebhook>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetWebhookQueryKey(webhookId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhook>>> = ({
+    signal,
+  }) => getWebhook(webhookId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!webhookId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getWebhook>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetWebhookQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getWebhook>>
+>;
+export type GetWebhookQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get a webhook by ID
+ */
+
+export function useGetWebhook<
+  TData = Awaited<ReturnType<typeof getWebhook>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  webhookId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getWebhook>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetWebhookQueryOptions(webhookId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a webhook
+ */
+export const getUpdateWebhookUrl = (webhookId: string) => {
+  return `/api/webhooks/${webhookId}`;
+};
+
+export const updateWebhook = async (
+  webhookId: string,
+  updateWebhookRequest: UpdateWebhookRequest,
+  options?: RequestInit,
+): Promise<Webhook> => {
+  return customFetch<Webhook>(getUpdateWebhookUrl(webhookId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateWebhookRequest),
+  });
+};
+
+export const getUpdateWebhookMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateWebhook>>,
+    TError,
+    { webhookId: string; data: BodyType<UpdateWebhookRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateWebhook>>,
+  TError,
+  { webhookId: string; data: BodyType<UpdateWebhookRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateWebhook"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateWebhook>>,
+    { webhookId: string; data: BodyType<UpdateWebhookRequest> }
+  > = (props) => {
+    const { webhookId, data } = props ?? {};
+
+    return updateWebhook(webhookId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateWebhookMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateWebhook>>
+>;
+export type UpdateWebhookMutationBody = BodyType<UpdateWebhookRequest>;
+export type UpdateWebhookMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a webhook
+ */
+export const useUpdateWebhook = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateWebhook>>,
+    TError,
+    { webhookId: string; data: BodyType<UpdateWebhookRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateWebhook>>,
+  TError,
+  { webhookId: string; data: BodyType<UpdateWebhookRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateWebhookMutationOptions(options));
 };
 
 /**

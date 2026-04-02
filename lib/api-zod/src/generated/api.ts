@@ -41,6 +41,13 @@ export const OnboardUserBody = zod.object({
 });
 
 /**
+ * @summary Generate a new API key for the tenant
+ */
+export const RotateApiKeyResponse = zod.object({
+  apiKey: zod.string().describe("The new API key (shown only once)"),
+});
+
+/**
  * @summary List all agents for the tenant
  */
 export const listAgentsQueryPageDefault = 1;
@@ -380,6 +387,44 @@ export const CreateMcpConnectionBody = zod.object({
 });
 
 /**
+ * @summary Get an MCP connection by ID
+ */
+export const GetMcpConnectionParams = zod.object({
+  connectionId: zod.coerce.string(),
+});
+
+export const GetMcpConnectionResponse = zod.object({
+  id: zod.string(),
+  tenantId: zod.string(),
+  name: zod.string(),
+  serverUrl: zod.string(),
+  status: zod.enum(["active", "inactive", "error"]),
+  createdAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Update an MCP connection
+ */
+export const UpdateMcpConnectionParams = zod.object({
+  connectionId: zod.coerce.string(),
+});
+
+export const UpdateMcpConnectionBody = zod.object({
+  name: zod.string().optional(),
+  serverUrl: zod.string().optional(),
+  authConfig: zod.record(zod.string(), zod.unknown()).optional(),
+});
+
+export const UpdateMcpConnectionResponse = zod.object({
+  id: zod.string(),
+  tenantId: zod.string(),
+  name: zod.string(),
+  serverUrl: zod.string(),
+  status: zod.enum(["active", "inactive", "error"]),
+  createdAt: zod.coerce.date(),
+});
+
+/**
  * @summary Remove an MCP connection
  */
 export const DeleteMcpConnectionParams = zod.object({
@@ -437,6 +482,45 @@ export const CreateWebhookBody = zod.object({
   agentId: zod.string().optional(),
   events: zod.array(zod.string()),
   secret: zod.string(),
+});
+
+/**
+ * @summary Get a webhook by ID
+ */
+export const GetWebhookParams = zod.object({
+  webhookId: zod.coerce.string(),
+});
+
+export const GetWebhookResponse = zod.object({
+  id: zod.string(),
+  tenantId: zod.string(),
+  agentId: zod.string().nullish(),
+  url: zod.string(),
+  events: zod.array(zod.string()),
+  createdAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Update a webhook
+ */
+export const UpdateWebhookParams = zod.object({
+  webhookId: zod.coerce.string(),
+});
+
+export const UpdateWebhookBody = zod.object({
+  url: zod.string().optional(),
+  agentId: zod.string().optional(),
+  events: zod.array(zod.string()).optional(),
+  secret: zod.string().optional(),
+});
+
+export const UpdateWebhookResponse = zod.object({
+  id: zod.string(),
+  tenantId: zod.string(),
+  agentId: zod.string().nullish(),
+  url: zod.string(),
+  events: zod.array(zod.string()),
+  createdAt: zod.coerce.date(),
 });
 
 /**
