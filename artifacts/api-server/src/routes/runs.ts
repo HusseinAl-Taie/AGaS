@@ -75,7 +75,7 @@ router.post("/runs/:runId/approve", requireAuth, async (req, res): Promise<void>
   const [updated] = await db
     .update(agentRunsTable)
     .set({ status: "running" })
-    .where(eq(agentRunsTable.id, runId))
+    .where(and(eq(agentRunsTable.id, runId), eq(agentRunsTable.tenantId, req.tenantId)))
     .returning();
 
   res.json(updated);
@@ -94,7 +94,7 @@ router.post("/runs/:runId/cancel", requireAuth, async (req, res): Promise<void> 
     return;
   }
 
-  const cancellableStatuses = ["queued", "running", "awaiting_approval"];
+  const cancellableStatuses: RunStatus[] = ["queued", "running", "awaiting_approval"];
   if (!cancellableStatuses.includes(run.status)) {
     res.status(400).json({ error: "Run cannot be cancelled in its current state" });
     return;
@@ -103,7 +103,7 @@ router.post("/runs/:runId/cancel", requireAuth, async (req, res): Promise<void> 
   const [updated] = await db
     .update(agentRunsTable)
     .set({ status: "cancelled", completedAt: new Date() })
-    .where(eq(agentRunsTable.id, runId))
+    .where(and(eq(agentRunsTable.id, runId), eq(agentRunsTable.tenantId, req.tenantId)))
     .returning();
 
   res.json(updated);

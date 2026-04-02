@@ -912,11 +912,8 @@ components:
       properties:
         tenantName:
           type: string
-        email:
-          type: string
       required:
         - tenantName
-        - email
 
     Agent:
       type: object

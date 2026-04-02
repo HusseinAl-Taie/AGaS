@@ -32,8 +32,7 @@ export default function OnboardPage() {
     onboardUser.mutate(
       { 
         data: { 
-          tenantName, 
-          email: user?.primaryEmailAddress?.emailAddress || "" 
+          tenantName
         } 
       },
       {

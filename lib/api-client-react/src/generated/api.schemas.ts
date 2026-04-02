@@ -48,7 +48,6 @@ export interface UserWithTenant {
 
 export interface OnboardRequest {
   tenantName: string;
-  email: string;
 }
 
 export type AgentApprovalMode =

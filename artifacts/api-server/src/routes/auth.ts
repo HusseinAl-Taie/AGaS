@@ -2,7 +2,10 @@ import { Router, type IRouter } from "express";
 import { db, usersTable, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
+import { createClerkClient } from "@clerk/express";
 import { requireAuth, requireAuthOrOnboard } from "../middlewares/requireAuth";
+
+const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
 const router: IRouter = Router();
 
@@ -40,10 +43,10 @@ router.get("/auth/me", requireAuthOrOnboard, async (req, res): Promise<void> => 
 });
 
 router.post("/auth/onboard", requireAuthOrOnboard, async (req, res): Promise<void> => {
-  const { tenantName, email } = req.body;
+  const { tenantName } = req.body;
 
-  if (!tenantName || !email) {
-    res.status(400).json({ error: "tenantName and email are required" });
+  if (!tenantName) {
+    res.status(400).json({ error: "tenantName is required" });
     return;
   }
 
@@ -69,6 +72,15 @@ router.post("/auth/onboard", requireAuthOrOnboard, async (req, res): Promise<voi
       createdAt: user.createdAt,
     });
     return;
+  }
+
+  // Derive email from Clerk identity — do not trust client-supplied email
+  let email = "";
+  try {
+    const clerkUser = await clerkClient.users.getUser(req.clerkUserId);
+    email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
+  } catch {
+    email = "";
   }
 
   const [tenant] = await db

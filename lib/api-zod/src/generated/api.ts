@@ -37,7 +37,6 @@ export const GetMeResponse = zod.object({
  */
 export const OnboardUserBody = zod.object({
   tenantName: zod.string(),
-  email: zod.string(),
 });
 
 /**

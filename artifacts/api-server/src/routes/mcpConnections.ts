@@ -185,11 +185,12 @@ router.post("/mcp-connections/:connectionId/test", requireAuth, async (req, res)
 
   // Validate the stored URL is safe before probing (defence-in-depth: also validated on create)
   const validation = validateSafeUrl(conn.serverUrl);
+  const tenantFilter = and(eq(mcpConnectionsTable.id, connectionId), eq(mcpConnectionsTable.tenantId, req.tenantId));
   if (!validation.ok) {
     await db
       .update(mcpConnectionsTable)
       .set({ status: "error" })
-      .where(eq(mcpConnectionsTable.id, connectionId));
+      .where(tenantFilter);
     res.json({ success: false, tools: [], error: `Unsafe server URL: ${validation.reason}` });
     return;
   }
@@ -209,14 +210,14 @@ router.post("/mcp-connections/:connectionId/test", requireAuth, async (req, res)
       await db
         .update(mcpConnectionsTable)
         .set({ status: "active" })
-        .where(eq(mcpConnectionsTable.id, connectionId));
+        .where(tenantFilter);
 
       res.json({ success: true, tools: [], error: null });
     } else {
       await db
         .update(mcpConnectionsTable)
         .set({ status: "error" })
-        .where(eq(mcpConnectionsTable.id, connectionId));
+        .where(tenantFilter);
 
       res.json({ success: false, tools: [], error: `Server responded with ${response.status}` });
     }
@@ -224,7 +225,7 @@ router.post("/mcp-connections/:connectionId/test", requireAuth, async (req, res)
     await db
       .update(mcpConnectionsTable)
       .set({ status: "error" })
-      .where(eq(mcpConnectionsTable.id, connectionId));
+      .where(tenantFilter);
 
     const message = err instanceof Error ? err.message : "Connection failed";
     res.json({ success: false, tools: [], error: message });

@@ -8,5 +8,4 @@
 
 export interface OnboardRequest {
   tenantName: string;
-  email: string;
 }

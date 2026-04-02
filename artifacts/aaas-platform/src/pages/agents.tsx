@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout";
-import { useListAgents, ListAgentsStatus } from "@workspace/api-client-react";
+import { useListAgents, useDeleteAgent, getListAgentsQueryKey, ListAgentsStatus } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,14 +11,20 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function AgentsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | keyof typeof ListAgentsStatus>("all");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   const { data, isLoading } = useListAgents({ 
     status: statusFilter !== "all" ? ListAgentsStatus[statusFilter] : undefined
   });
+
+  const deleteAgent = useDeleteAgent();
 
   const filteredAgents = data?.agents.filter(agent => 
     agent.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -125,7 +131,23 @@ export default function AgentsPage() {
                             <Settings className="w-4 h-4 mr-2" /> Configure
                           </DropdownMenuItem>
                         </Link>
-                        <DropdownMenuItem className="cursor-pointer">
+                        <DropdownMenuItem
+                          className="cursor-pointer text-destructive focus:text-destructive"
+                          onClick={() => {
+                            deleteAgent.mutate(
+                              { agentId: agent.id },
+                              {
+                                onSuccess: () => {
+                                  toast({ title: "Agent archived" });
+                                  queryClient.invalidateQueries({ queryKey: getListAgentsQueryKey() });
+                                },
+                                onError: () => {
+                                  toast({ title: "Failed to archive agent", variant: "destructive" });
+                                }
+                              }
+                            );
+                          }}
+                        >
                           <Archive className="w-4 h-4 mr-2" /> Archive
                         </DropdownMenuItem>
                       </DropdownMenuContent>
