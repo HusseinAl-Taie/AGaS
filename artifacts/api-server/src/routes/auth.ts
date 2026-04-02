@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { createHash, randomBytes } from "crypto";
 import { requireAuth, requireAuthOrOnboard } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -98,6 +99,18 @@ router.post("/auth/onboard", requireAuthOrOnboard, async (req, res): Promise<voi
     },
     createdAt: user.createdAt,
   });
+});
+
+router.post("/auth/api-key/rotate", requireAuth, async (req, res): Promise<void> => {
+  const rawKey = `aaas_live_${randomBytes(24).toString("hex")}`;
+  const hash = createHash("sha256").update(rawKey).digest("hex");
+
+  await db
+    .update(tenantsTable)
+    .set({ apiKeyHash: hash })
+    .where(eq(tenantsTable.id, req.tenantId));
+
+  res.json({ apiKey: rawKey });
 });
 
 export default router;

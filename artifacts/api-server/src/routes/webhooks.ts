@@ -41,6 +41,55 @@ router.post("/webhooks", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(safe);
 });
 
+router.get("/webhooks/:webhookId", requireAuth, async (req, res): Promise<void> => {
+  const webhookId = Array.isArray(req.params.webhookId) ? req.params.webhookId[0] : req.params.webhookId;
+
+  const [webhook] = await db
+    .select()
+    .from(webhooksTable)
+    .where(and(eq(webhooksTable.id, webhookId), eq(webhooksTable.tenantId, req.tenantId)));
+
+  if (!webhook) {
+    res.status(404).json({ error: "Webhook not found" });
+    return;
+  }
+
+  const { secretHash: _s, ...safe } = webhook;
+  res.json(safe);
+});
+
+router.put("/webhooks/:webhookId", requireAuth, async (req, res): Promise<void> => {
+  const webhookId = Array.isArray(req.params.webhookId) ? req.params.webhookId[0] : req.params.webhookId;
+
+  const [existing] = await db
+    .select()
+    .from(webhooksTable)
+    .where(and(eq(webhooksTable.id, webhookId), eq(webhooksTable.tenantId, req.tenantId)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Webhook not found" });
+    return;
+  }
+
+  const updates: Partial<Pick<typeof webhooksTable.$inferInsert, "url" | "events" | "agentId">> = {};
+  if (req.body.url !== undefined) updates.url = req.body.url;
+  if (req.body.events !== undefined) updates.events = req.body.events;
+  if (req.body.agentId !== undefined) updates.agentId = req.body.agentId;
+
+  const secretHash = req.body.secret
+    ? createHash("sha256").update(req.body.secret as string).digest("hex")
+    : undefined;
+
+  const [webhook] = await db
+    .update(webhooksTable)
+    .set(secretHash ? { ...updates, secretHash } : updates)
+    .where(and(eq(webhooksTable.id, webhookId), eq(webhooksTable.tenantId, req.tenantId)))
+    .returning();
+
+  const { secretHash: _s, ...safe } = webhook;
+  res.json(safe);
+});
+
 router.delete("/webhooks/:webhookId", requireAuth, async (req, res): Promise<void> => {
   const webhookId = Array.isArray(req.params.webhookId) ? req.params.webhookId[0] : req.params.webhookId;
 

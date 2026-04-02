@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout";
-import { useListMcpConnections, useCreateMcpConnection, useDeleteMcpConnection, useTestMcpConnection, getListMcpConnectionsQueryKey } from "@workspace/api-client-react";
+import { useListMcpConnections, useCreateMcpConnection, useDeleteMcpConnection, useTestMcpConnection, getListMcpConnectionsQueryKey, type McpConnectionTestResult } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,7 @@ export default function ConnectionsPage() {
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, any>>({});
+  const [testResults, setTestResults] = useState<Record<string, McpConnectionTestResult>>({});
   
   // Form
   const [name, setName] = useState("");
@@ -197,7 +197,7 @@ export default function ConnectionsPage() {
                           </div>
                           <p className="text-green-800 text-xs mb-2">Discovered {testResults[conn.id].tools?.length || 0} tools:</p>
                           <div className="flex flex-wrap gap-1">
-                            {testResults[conn.id].tools?.slice(0, 5).map((t: any) => (
+                            {testResults[conn.id].tools?.slice(0, 5).map((t) => (
                               <Badge variant="outline" key={t.name} className="bg-white/50 text-green-800 border-green-300">{t.name}</Badge>
                             ))}
                             {(testResults[conn.id].tools?.length || 0) > 5 && (

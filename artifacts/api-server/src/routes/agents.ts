@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db, agentsTable, agentRunsTable } from "@workspace/db";
-import { eq, and, desc, count } from "drizzle-orm";
+import { eq, and, desc, count, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+
+type AgentStatus = "active" | "paused" | "archived";
 
 const router: IRouter = Router();
 
@@ -12,8 +14,9 @@ router.get("/agents", requireAuth, async (req, res): Promise<void> => {
   const offset = (pageNum - 1) * limitNum;
 
   const conditions = [eq(agentsTable.tenantId, req.tenantId)];
-  if (status) {
-    conditions.push(eq(agentsTable.status, status as any));
+  const validStatuses: AgentStatus[] = ["active", "paused", "archived"];
+  if (status && validStatuses.includes(status as AgentStatus)) {
+    conditions.push(eq(agentsTable.status, status as AgentStatus));
   }
 
   const [agents, totalResult] = await Promise.all([
@@ -97,11 +100,14 @@ router.put("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const updates: Partial<typeof agentsTable.$inferInsert> = {};
-  const fields = ["name", "description", "systemPrompt", "model", "tools", "maxSteps", "maxBudgetCents", "approvalMode", "status"];
+  type AgentUpdate = Partial<typeof agentsTable.$inferInsert>;
+  const updates: AgentUpdate = {};
+  type AgentUpdateKey = keyof AgentUpdate;
+  const fields: AgentUpdateKey[] = ["name", "description", "systemPrompt", "model", "tools", "maxSteps", "maxBudgetCents", "approvalMode", "status"];
   for (const field of fields) {
     if (req.body[field] !== undefined) {
-      (updates as any)[field] = req.body[field];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (updates as Record<AgentUpdateKey, unknown>)[field] = req.body[field];
     }
   }
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout";
-import { useListAgents } from "@workspace/api-client-react";
+import { useListAgents, ListAgentsStatus } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,10 +14,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 export default function AgentsPage() {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | keyof typeof ListAgentsStatus>("all");
   
   const { data, isLoading } = useListAgents({ 
-    status: statusFilter !== "all" ? statusFilter as any : undefined
+    status: statusFilter !== "all" ? ListAgentsStatus[statusFilter] : undefined
   });
 
   const filteredAgents = data?.agents.filter(agent => 
@@ -64,7 +64,7 @@ export default function AgentsPage() {
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <Filter className="h-4 w-4 text-muted-foreground" />
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | keyof typeof ListAgentsStatus)}>
               <SelectTrigger className="w-[140px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>

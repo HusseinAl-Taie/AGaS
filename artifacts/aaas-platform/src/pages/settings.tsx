@@ -8,10 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building, Key, Webhook as WebhookIcon, Trash2, Copy, Check } from "lucide-react";
+import { Building, Key, Webhook as WebhookIcon, Trash2, Copy, Check, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
 export default function SettingsPage() {
@@ -29,6 +29,23 @@ export default function SettingsPage() {
   const [secret, setSecret] = useState("");
   
   const [copiedKey, setCopiedKey] = useState(false);
+  const [visibleApiKey, setVisibleApiKey] = useState<string | null>(null);
+
+  const rotateApiKey = useMutation({
+    mutationFn: async () => {
+      const resp = await fetch("/aaas-platform/api/auth/api-key/rotate", { method: "POST", credentials: "include" });
+      if (!resp.ok) throw new Error("Failed to rotate API key");
+      const data = await resp.json() as { apiKey: string };
+      return data;
+    },
+    onSuccess: (data) => {
+      setVisibleApiKey(data.apiKey);
+      toast({ title: "New API key generated", description: "Copy it now — it won't be shown again." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to generate API key.", variant: "destructive" });
+    }
+  });
 
   const handleCreateWebhook = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +82,8 @@ export default function SettingsPage() {
   };
 
   const copyApiKey = () => {
-    navigator.clipboard.writeText(`aaas_live_${crypto.randomUUID().replace(/-/g, '')}`);
+    if (!visibleApiKey) return;
+    navigator.clipboard.writeText(visibleApiKey);
     setCopiedKey(true);
     setTimeout(() => setCopiedKey(false), 2000);
     toast({ title: "API Key copied to clipboard" });
@@ -120,18 +138,36 @@ export default function SettingsPage() {
             <CardDescription>Keys to access the AaaS API programmatically</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4">
-              <div className="flex-1 relative">
-                <Input value="aaas_live_***************************" readOnly className="font-mono bg-muted/50" />
+            {visibleApiKey ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Input value={visibleApiKey} readOnly className="font-mono text-xs bg-muted/50" />
+                  </div>
+                  <Button variant="outline" onClick={copyApiKey} disabled={!visibleApiKey}>
+                    {copiedKey ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <Copy className="w-4 h-4 mr-2" />}
+                    {copiedKey ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  Save this key now — it won't be shown again. If lost, generate a new one.
+                </p>
               </div>
-              <Button variant="outline" onClick={copyApiKey}>
-                {copiedKey ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <Copy className="w-4 h-4 mr-2" />}
-                {copiedKey ? "Copied" : "Copy"}
+            ) : (
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Input value="aaas_live_••••••••••••••••••••••••••••••••••••••••••••••••" readOnly className="font-mono text-xs bg-muted/50 text-muted-foreground" />
+                </div>
+              </div>
+            )}
+            <div className="flex mt-4">
+              <Button onClick={() => rotateApiKey.mutate()} disabled={rotateApiKey.isPending} variant={visibleApiKey ? "outline" : "default"} size="sm">
+                <RefreshCw className={`w-4 h-4 mr-2 ${rotateApiKey.isPending ? "animate-spin" : ""}`} />
+                {visibleApiKey ? "Rotate Key" : "Generate API Key"}
               </Button>
-              <Button>Roll Key</Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-4">
-              Keep this key secret. If compromised, roll it immediately to revoke access.
+            <p className="text-xs text-muted-foreground mt-3">
+              Keep this key secret. If compromised, rotate it immediately to revoke all existing access.
             </p>
           </CardContent>
         </Card>

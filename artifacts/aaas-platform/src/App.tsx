@@ -16,6 +16,7 @@ import AgentsNewPage from "@/pages/agents-new";
 import AgentDetailPage from "@/pages/agent-detail";
 import RunsPage from "@/pages/runs";
 import RunDetailPage from "@/pages/run-detail";
+import AgentRunsPage from "@/pages/agent-runs";
 import ConnectionsPage from "@/pages/connections";
 import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
@@ -126,11 +127,13 @@ function ClerkProviderWithRoutes() {
             <Route path="/" component={HomeRedirect} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
+            <Route path="/login"><Redirect to="/sign-in" /></Route>
             <Route path="/onboard" component={OnboardRoute} />
             
             <Route path="/dashboard"><ProtectedRoute component={DashboardPage} /></Route>
             <Route path="/agents"><ProtectedRoute component={AgentsPage} /></Route>
             <Route path="/agents/new"><ProtectedRoute component={AgentsNewPage} /></Route>
+            <Route path="/agents/:id/runs"><ProtectedRoute component={AgentRunsPage} /></Route>
             <Route path="/agents/:id"><ProtectedRoute component={AgentDetailPage} /></Route>
             <Route path="/runs"><ProtectedRoute component={RunsPage} /></Route>
             <Route path="/runs/:id"><ProtectedRoute component={RunDetailPage} /></Route>

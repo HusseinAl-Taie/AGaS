@@ -101,6 +101,58 @@ router.post("/mcp-connections", requireAuth, async (req, res): Promise<void> => 
   res.status(201).json(safe);
 });
 
+router.get("/mcp-connections/:connectionId", requireAuth, async (req, res): Promise<void> => {
+  const connectionId = Array.isArray(req.params.connectionId) ? req.params.connectionId[0] : req.params.connectionId;
+
+  const [conn] = await db
+    .select()
+    .from(mcpConnectionsTable)
+    .where(and(eq(mcpConnectionsTable.id, connectionId), eq(mcpConnectionsTable.tenantId, req.tenantId)));
+
+  if (!conn) {
+    res.status(404).json({ error: "Connection not found" });
+    return;
+  }
+
+  const { authConfig: _auth, ...safe } = conn;
+  res.json(safe);
+});
+
+router.put("/mcp-connections/:connectionId", requireAuth, async (req, res): Promise<void> => {
+  const connectionId = Array.isArray(req.params.connectionId) ? req.params.connectionId[0] : req.params.connectionId;
+
+  const [existing] = await db
+    .select()
+    .from(mcpConnectionsTable)
+    .where(and(eq(mcpConnectionsTable.id, connectionId), eq(mcpConnectionsTable.tenantId, req.tenantId)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Connection not found" });
+    return;
+  }
+
+  const updates: Partial<Pick<typeof mcpConnectionsTable.$inferInsert, "name" | "serverUrl" | "authConfig">> = {};
+  if (req.body.name !== undefined) updates.name = req.body.name;
+  if (req.body.serverUrl !== undefined) {
+    const validation = validateSafeUrl(req.body.serverUrl);
+    if (!validation.ok) {
+      res.status(400).json({ error: `Invalid server URL: ${validation.reason}` });
+      return;
+    }
+    updates.serverUrl = req.body.serverUrl;
+  }
+  if (req.body.authConfig !== undefined) updates.authConfig = req.body.authConfig;
+
+  const [conn] = await db
+    .update(mcpConnectionsTable)
+    .set({ ...updates, status: "inactive" })
+    .where(and(eq(mcpConnectionsTable.id, connectionId), eq(mcpConnectionsTable.tenantId, req.tenantId)))
+    .returning();
+
+  const { authConfig: _auth, ...safe } = conn;
+  res.json(safe);
+});
+
 router.delete("/mcp-connections/:connectionId", requireAuth, async (req, res): Promise<void> => {
   const connectionId = Array.isArray(req.params.connectionId) ? req.params.connectionId[0] : req.params.connectionId;
 
