@@ -83,6 +83,29 @@ lib/
 - New users POST /api/auth/onboard to create their tenant workspace
 - If GET /api/auth/me returns 403, user is redirected to /onboard
 
+## Agent Execution Engine (Phase 2)
+
+- **AgentRunner** (`artifacts/api-server/src/worker/agentRunner.ts`) — Claude agentic loop with:
+  - Multi-turn messages accumulation
+  - MCP tool discovery + execution via JSON-RPC
+  - Budget tracking in cents with automatic `budget_exceeded` status
+  - Human-in-loop support (pauses at tool calls, saves pending state to DB, resumes on approve)
+  - Cancellation detection on each loop iteration
+  - Step trace stored as JSONB: `{ type, content, toolName, toolInput, toolCallId, isError, tokens, timestamp }`
+- **MCP Client** (`artifacts/api-server/src/worker/mcpClient.ts`) — JSON-RPC 2.0 client for MCP servers
+- **Queue** (`artifacts/api-server/src/lib/queue.ts`) — BullMQ job queue backed by Redis
+  - Redis started via `redis-server --daemonize yes` in the dev script
+  - One BullMQ worker running in-process (concurrency: 5)
+- **Models**: `claude-sonnet-4-6` (default), `claude-haiku-4-5`, `claude-opus-4-6` via Replit AI Integrations
+- **New env vars**: `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`, `AI_INTEGRATIONS_ANTHROPIC_API_KEY`, `REDIS_URL` (optional, defaults to `redis://localhost:6379`)
+
+## Run Detail Page Updates
+
+- Step trace accordion replaced with new format matching `RunStep` interface
+- Live polling every 3s for active runs (queued/running/awaiting_approval)
+- Final answer prominently shown above the trace
+- Approve + Cancel buttons contextual to run status
+
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages

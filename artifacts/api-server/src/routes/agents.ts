@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, agentsTable, agentRunsTable } from "@workspace/db";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+import { enqueueAgentRun } from "../lib/queue";
 
 type AgentStatus = "active" | "paused" | "archived";
 
@@ -41,7 +42,7 @@ router.post("/agents", requireAuth, async (req, res): Promise<void> => {
     name,
     description = "",
     systemPrompt = "",
-    model = "claude-sonnet-4-20250514",
+    model = "claude-sonnet-4-6",
     tools = [],
     maxSteps = 20,
     maxBudgetCents = 100,
@@ -156,6 +157,11 @@ router.post("/agents/:agentId/run", requireAuth, async (req, res): Promise<void>
     return;
   }
 
+  if (agent.status !== "active") {
+    res.status(400).json({ error: "Agent must be active to run" });
+    return;
+  }
+
   const { input = {}, trigger = "manual" } = req.body;
 
   const [run] = await db
@@ -168,6 +174,8 @@ router.post("/agents/:agentId/run", requireAuth, async (req, res): Promise<void>
       status: "queued",
     })
     .returning();
+
+  await enqueueAgentRun({ runId: run.id, agentId: run.agentId, tenantId: run.tenantId });
 
   res.status(201).json(run);
 });

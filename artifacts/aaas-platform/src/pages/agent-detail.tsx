@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ArrowLeft, Box, Play, Clock, Save, Settings, Activity } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +34,10 @@ export default function AgentDetailPage() {
 
   const updateAgent = useUpdateAgent();
   const triggerRun = useTriggerAgentRun();
+
+  // Run dialog state
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [runMessage, setRunMessage] = useState("");
 
   // Edit state
   const [isEditing, setIsEditing] = useState(false);
@@ -89,12 +94,17 @@ export default function AgentDetailPage() {
 
   const handleTrigger = () => {
     triggerRun.mutate(
-      { agentId, data: { input: {}, trigger: "manual" } },
+      { agentId, data: { input: runMessage ? { message: runMessage } : {}, trigger: "manual" } },
       {
         onSuccess: (run) => {
-          toast({ title: "Run started" });
+          toast({ title: "Run started", description: "Agent is now executing." });
           queryClient.invalidateQueries({ queryKey: getListRunsQueryKey() });
+          setRunDialogOpen(false);
+          setRunMessage("");
           setLocation(`/runs/${run.id}`);
+        },
+        onError: (err) => {
+          toast({ title: "Failed to start run", description: err.message, variant: "destructive" });
         }
       }
     );
@@ -133,6 +143,40 @@ export default function AgentDetailPage() {
 
   return (
     <AppLayout>
+      <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Run Agent: {agent.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="run-message">Message / Task</Label>
+              <Textarea
+                id="run-message"
+                placeholder="Describe what you want the agent to do…"
+                value={runMessage}
+                onChange={(e) => setRunMessage(e.target.value)}
+                className="min-h-[120px]"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && e.metaKey) {
+                    e.preventDefault();
+                    handleTrigger();
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">Press ⌘+Enter to run</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRunDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleTrigger} disabled={triggerRun.isPending} data-testid="button-confirm-run">
+              <Play className="w-4 h-4 mr-2" />
+              {triggerRun.isPending ? "Starting…" : "Run Agent"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex flex-col gap-6">
         <div className="flex items-center text-sm text-muted-foreground">
           <Link href="/agents" className="hover:text-foreground flex items-center gap-1">
@@ -159,7 +203,7 @@ export default function AgentDetailPage() {
                 <Settings className="w-4 h-4 mr-2" /> Edit Config
               </Button>
             )}
-            <Button onClick={handleTrigger} disabled={triggerRun.isPending || agent.status !== 'active'} data-testid="button-trigger-run">
+            <Button onClick={() => setRunDialogOpen(true)} disabled={triggerRun.isPending || agent.status !== 'active'} data-testid="button-trigger-run">
               <Play className="w-4 h-4 mr-2" /> Run Now
             </Button>
           </div>
@@ -231,8 +275,9 @@ export default function AgentDetailPage() {
                         <Select value={editForm.model} onValueChange={(v) => setEditForm(prev => ({...prev, model: v}))}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                            <SelectItem value="claude-3-5-sonnet">Claude 3.5 Sonnet</SelectItem>
+                            <SelectItem value="claude-sonnet-4-6">Claude Sonnet 4 (claude-sonnet-4-6)</SelectItem>
+                            <SelectItem value="claude-haiku-4-5">Claude Haiku 4 (claude-haiku-4-5)</SelectItem>
+                            <SelectItem value="claude-opus-4-6">Claude Opus 4 (claude-opus-4-6)</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (

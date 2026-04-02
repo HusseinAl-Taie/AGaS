@@ -6,23 +6,124 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ArrowLeft, Check, X, Box, Terminal, Zap, Coins, Clock, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Check, X, Box, Terminal, Zap, Coins, Clock, AlertTriangle, Brain, Wrench, CheckCircle2, MessageSquare, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, differenceInSeconds } from "date-fns";
+import { useEffect, useRef } from "react";
+
+interface RunStep {
+  type: "thought" | "tool_call" | "tool_result" | "final_answer";
+  content: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolCallId?: string;
+  isError?: boolean;
+  tokens?: number;
+  timestamp: string;
+}
+
+function StepIcon({ type, isError }: { type: RunStep["type"]; isError?: boolean }) {
+  switch (type) {
+    case "thought": return <Brain className="w-4 h-4 text-blue-500" />;
+    case "tool_call": return <Terminal className="w-4 h-4 text-purple-500" />;
+    case "tool_result": return isError
+      ? <AlertTriangle className="w-4 h-4 text-red-500" />
+      : <Wrench className="w-4 h-4 text-green-500" />;
+    case "final_answer": return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
+    default: return <MessageSquare className="w-4 h-4 text-muted-foreground" />;
+  }
+}
+
+function StepLabel({ type }: { type: RunStep["type"] }) {
+  switch (type) {
+    case "thought": return "Thought";
+    case "tool_call": return "Tool Call";
+    case "tool_result": return "Tool Result";
+    case "final_answer": return "Final Answer";
+    default: return type;
+  }
+}
+
+function StepCard({ step, index }: { step: RunStep; index: number }) {
+  return (
+    <AccordionItem value={`step-${index}`} className="border-border">
+      <AccordionTrigger className="hover:no-underline py-3">
+        <div className="flex items-center gap-3 text-left w-full">
+          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+            <StepIcon type={step.type} isError={step.isError} />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-sm">{StepLabel({ type: step.type })}</span>
+              {step.toolName && (
+                <Badge variant="outline" className="font-mono text-xs px-1.5 py-0">
+                  {step.toolName}
+                </Badge>
+              )}
+              {step.isError && (
+                <Badge variant="destructive" className="text-xs px-1.5 py-0">error</Badge>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground truncate max-w-xs">
+              {step.content.slice(0, 80)}{step.content.length > 80 ? "…" : ""}
+            </span>
+          </div>
+          <div className="ml-auto shrink-0 text-xs text-muted-foreground">
+            {step.tokens ? `${step.tokens} tok` : ""}
+          </div>
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="pb-4">
+        <div className={`rounded-md border p-4 text-sm font-mono whitespace-pre-wrap overflow-x-auto ${
+          step.type === "thought" ? "bg-blue-500/5 border-blue-200/50" :
+          step.type === "tool_call" ? "bg-purple-500/5 border-purple-200/50" :
+          step.type === "tool_result" ? (step.isError ? "bg-red-500/5 border-red-200/50" : "bg-green-500/5 border-green-200/50") :
+          step.type === "final_answer" ? "bg-emerald-500/5 border-emerald-200/50" :
+          "bg-muted"
+        }`}>
+          {step.content}
+        </div>
+        {step.toolInput && (
+          <div className="mt-2 rounded-md border bg-muted/30 p-3">
+            <div className="text-xs text-muted-foreground font-semibold uppercase mb-1">Input</div>
+            <pre className="text-xs overflow-x-auto">{JSON.stringify(step.toolInput, null, 2)}</pre>
+          </div>
+        )}
+        <div className="text-xs text-muted-foreground mt-2">
+          {format(parseISO(step.timestamp), "HH:mm:ss.SSS")}
+        </div>
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
 
 export default function RunDetailPage() {
   const [, params] = useRoute("/runs/:id");
   const runId = params?.id || "";
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { data: run, isLoading } = useGetRun(runId, { 
-    query: { enabled: !!runId, queryKey: getGetRunQueryKey(runId) } 
+  const { data: run, isLoading } = useGetRun(runId, {
+    query: { enabled: !!runId, queryKey: getGetRunQueryKey(runId) }
   });
 
   const approveRun = useApproveRun();
   const cancelRun = useCancelRun();
+
+  // Poll for updates when run is active
+  useEffect(() => {
+    const activeStatuses = ["queued", "running", "awaiting_approval"];
+    if (run && activeStatuses.includes(run.status)) {
+      pollingRef.current = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: getGetRunQueryKey(runId) });
+      }, 3000);
+    }
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [run?.status, runId, queryClient]);
 
   const handleApprove = () => {
     approveRun.mutate(
@@ -52,10 +153,15 @@ export default function RunDetailPage() {
 
   const getStatusBadge = (status: string) => {
     switch(status) {
-      case 'completed': return <Badge className="bg-green-500/10 text-green-700">Completed</Badge>;
+      case 'completed': return <Badge className="bg-green-500/10 text-green-700 border-green-200">Completed</Badge>;
       case 'failed': return <Badge variant="destructive">Failed</Badge>;
-      case 'running': return <Badge className="bg-blue-500/10 text-blue-700 animate-pulse">Running</Badge>;
+      case 'running': return (
+        <Badge className="bg-blue-500/10 text-blue-700 border-blue-200">
+          <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Running
+        </Badge>
+      );
       case 'awaiting_approval': return <Badge variant="outline" className="border-amber-500 text-amber-600 bg-amber-50">Requires Approval</Badge>;
+      case 'queued': return <Badge variant="outline" className="text-muted-foreground">Queued</Badge>;
       case 'cancelled': return <Badge variant="secondary">Cancelled</Badge>;
       case 'budget_exceeded': return <Badge variant="destructive">Budget Exceeded</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
@@ -76,9 +182,12 @@ export default function RunDetailPage() {
 
   if (!run) return <AppLayout>Run not found</AppLayout>;
 
-  const duration = run.startedAt && run.completedAt 
+  const steps = (run.steps ?? []) as unknown as RunStep[];
+  const duration = run.startedAt && run.completedAt
     ? differenceInSeconds(parseISO(run.completedAt), parseISO(run.startedAt))
     : null;
+
+  const finalAnswerStep = steps.find(s => s.type === "final_answer");
 
   return (
     <AppLayout>
@@ -97,28 +206,30 @@ export default function RunDetailPage() {
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Box className="w-4 h-4" />
-              <span>Agent: <Link href={`/agents/${run.agentId}`} className="text-primary hover:underline">{run.agent?.name || run.agentId}</Link></span>
+              <span>Agent: <Link href={`/agents/${run.agentId}`} className="text-primary hover:underline">{(run as Record<string, unknown> & { agent?: { name: string } }).agent?.name || run.agentId}</Link></span>
               <span className="mx-2">•</span>
               <span>Trigger: {run.trigger}</span>
             </div>
           </div>
 
-          {run.status === 'awaiting_approval' && (
-            <div className="flex gap-2 bg-amber-50 border border-amber-200 p-2 rounded-lg">
-              <Button variant="outline" className="border-amber-200 text-amber-700 hover:bg-amber-100" onClick={handleCancel} disabled={cancelRun.isPending}>
-                <X className="w-4 h-4 mr-2" /> Reject
+          <div className="flex items-center gap-2">
+            {run.status === 'awaiting_approval' && (
+              <div className="flex gap-2 bg-amber-50 border border-amber-200 p-2 rounded-lg">
+                <Button variant="outline" className="border-amber-200 text-amber-700 hover:bg-amber-100" onClick={handleCancel} disabled={cancelRun.isPending}>
+                  <X className="w-4 h-4 mr-2" /> Reject
+                </Button>
+                <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={handleApprove} disabled={approveRun.isPending} data-testid="button-approve-run">
+                  <Check className="w-4 h-4 mr-2" /> Approve Action
+                </Button>
+              </div>
+            )}
+
+            {(run.status === 'running' || run.status === 'queued') && (
+              <Button variant="destructive" onClick={handleCancel} disabled={cancelRun.isPending}>
+                <X className="w-4 h-4 mr-2" /> Cancel Run
               </Button>
-              <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={handleApprove} disabled={approveRun.isPending} data-testid="button-approve-run">
-                <Check className="w-4 h-4 mr-2" /> Approve Action
-              </Button>
-            </div>
-          )}
-          
-          {run.status === 'running' && (
-            <Button variant="destructive" onClick={handleCancel} disabled={cancelRun.isPending}>
-              <X className="w-4 h-4 mr-2" /> Cancel Run
-            </Button>
-          )}
+            )}
+          </div>
         </div>
 
         {run.error && (
@@ -136,21 +247,21 @@ export default function RunDetailPage() {
             <CardContent className="p-4 flex flex-col items-center justify-center text-center">
               <Zap className="w-5 h-5 text-muted-foreground mb-2" />
               <div className="text-sm text-muted-foreground">Tokens Used</div>
-              <div className="text-xl font-bold">{run.totalTokens.toLocaleString()}</div>
+              <div className="text-xl font-bold">{(run.totalTokens ?? 0).toLocaleString()}</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 flex flex-col items-center justify-center text-center">
               <Coins className="w-5 h-5 text-muted-foreground mb-2" />
               <div className="text-sm text-muted-foreground">Total Cost</div>
-              <div className="text-xl font-bold">${(run.costCents / 100).toFixed(4)}</div>
+              <div className="text-xl font-bold">${((run.costCents ?? 0) / 100).toFixed(4)}</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 flex flex-col items-center justify-center text-center">
               <Terminal className="w-5 h-5 text-muted-foreground mb-2" />
               <div className="text-sm text-muted-foreground">Steps</div>
-              <div className="text-xl font-bold">{run.steps?.length || 0}</div>
+              <div className="text-xl font-bold">{steps.length}</div>
             </CardContent>
           </Card>
           <Card>
@@ -164,86 +275,42 @@ export default function RunDetailPage() {
 
         <div className="grid md:grid-cols-3 gap-6">
           <div className="md:col-span-2 space-y-6">
+            {finalAnswerStep && (
+              <Card className="border-emerald-200 shadow-md">
+                <CardHeader className="bg-emerald-500/5 border-b border-emerald-200/50">
+                  <CardTitle className="text-emerald-700 flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5" /> Final Answer
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{finalAnswerStep.content}</p>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle>Execution Trace</CardTitle>
                 <CardDescription>Step-by-step reasoning and tool usage</CardDescription>
               </CardHeader>
               <CardContent>
-                {!run.steps || run.steps.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">No steps recorded yet.</div>
+                {steps.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {run.status === 'queued' ? 'Waiting to start…' : run.status === 'running' ? 'Executing…' : 'No steps recorded.'}
+                  </div>
                 ) : (
-                  <Accordion type="multiple" defaultValue={["step-1"]} className="w-full">
-                    {run.steps.map((step) => (
-                      <AccordionItem key={step.stepNumber} value={`step-${step.stepNumber}`} className="border-border">
-                        <AccordionTrigger className="hover:no-underline py-3">
-                          <div className="flex items-center gap-3 text-left">
-                            <div className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-bold">
-                              {step.stepNumber}
-                            </div>
-                            <span className="font-semibold">Step {step.stepNumber}</span>
-                            <span className="text-xs text-muted-foreground font-normal ml-2">{step.tokensUsed} tokens</span>
-                          </div>
-                        </AccordionTrigger>
-                        <AccordionContent className="pb-4 space-y-4">
-                          {step.thought && (
-                            <div className="bg-muted/30 p-4 rounded-md border border-border/50">
-                              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Thought</h4>
-                              <div className="text-sm font-mono whitespace-pre-wrap text-foreground/90">{step.thought}</div>
-                            </div>
-                          )}
-                          
-                          {step.toolCalls && step.toolCalls.length > 0 && (
-                            <div className="space-y-3">
-                              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tool Calls</h4>
-                              {step.toolCalls.map((call, idx) => {
-                                const c = call as Record<string, unknown>;
-                                return (
-                                  <div key={idx} className="border border-border rounded-md overflow-hidden">
-                                    <div className="bg-muted px-3 py-2 text-sm font-mono font-semibold flex items-center gap-2 border-b border-border">
-                                      <Terminal className="w-4 h-4 text-primary" />
-                                      {String(c.name ?? "unknown_tool")}
-                                    </div>
-                                    <div className="p-3 bg-background">
-                                      <pre className="text-xs text-muted-foreground overflow-x-auto">
-                                        {JSON.stringify(c.arguments ?? c.args ?? {}, null, 2)}
-                                      </pre>
-                                    </div>
-                                    {step.toolResults && step.toolResults[idx] !== undefined && (
-                                      <div className="p-3 bg-green-500/5 border-t border-border">
-                                        <div className="text-xs font-semibold text-green-700 mb-1">Result:</div>
-                                        <pre className="text-xs text-green-900/80 overflow-x-auto max-h-40 overflow-y-auto">
-                                          {JSON.stringify(step.toolResults[idx], null, 2)}
-                                        </pre>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </AccordionContent>
-                      </AccordionItem>
+                  <Accordion
+                    type="multiple"
+                    defaultValue={steps.map((_, i) => `step-${i}`)}
+                    className="w-full"
+                  >
+                    {steps.map((step, i) => (
+                      <StepCard key={i} step={step} index={i} />
                     ))}
                   </Accordion>
                 )}
               </CardContent>
             </Card>
-
-            {run.output && (
-              <Card className="border-primary/20 shadow-md">
-                <CardHeader className="bg-primary/5 border-b border-primary/10">
-                  <CardTitle className="text-primary flex items-center gap-2">
-                    <Check className="w-5 h-5" /> Final Output
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <pre className="whitespace-pre-wrap font-mono text-sm overflow-auto">
-                    {typeof run.output === 'string' ? run.output : JSON.stringify(run.output, null, 2)}
-                  </pre>
-                </CardContent>
-              </Card>
-            )}
           </div>
 
           <div className="space-y-6">

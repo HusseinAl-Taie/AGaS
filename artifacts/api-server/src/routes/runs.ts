@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, agentRunsTable, agentsTable, runStatusEnum } from "@workspace/db";
 import { eq, and, desc, count } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+import { enqueueAgentRun } from "../lib/queue";
 
 type RunStatus = (typeof runStatusEnum.enumValues)[number];
 
@@ -77,6 +78,13 @@ router.post("/runs/:runId/approve", requireAuth, async (req, res): Promise<void>
     .set({ status: "running" })
     .where(and(eq(agentRunsTable.id, runId), eq(agentRunsTable.tenantId, req.tenantId)))
     .returning();
+
+  // Re-enqueue the run job so the worker picks it up with approved status
+  await enqueueAgentRun({
+    runId: updated.id,
+    agentId: updated.agentId,
+    tenantId: updated.tenantId,
+  });
 
   res.json(updated);
 });

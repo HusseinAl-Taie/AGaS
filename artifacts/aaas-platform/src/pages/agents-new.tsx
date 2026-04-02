@@ -18,7 +18,7 @@ const TEMPLATES = [
     icon: Box,
     description: "Start from scratch with a clean configuration.",
     prompt: "You are a helpful assistant.",
-    model: "gpt-4o",
+    model: "claude-sonnet-4-6",
     approvalMode: "auto"
   },
   {
@@ -27,7 +27,7 @@ const TEMPLATES = [
     icon: Mail,
     description: "Sorts, categorizes, and drafts replies to incoming emails.",
     prompt: "You are an executive assistant managing an inbox. Categorize emails as Urgent, Routine, or Spam. Draft polite professional replies for Routine emails.",
-    model: "gpt-4o",
+    model: "claude-sonnet-4-6",
     approvalMode: "human_in_loop"
   },
   {
@@ -36,7 +36,7 @@ const TEMPLATES = [
     icon: Code,
     description: "Analyzes pull requests for bugs, security issues, and style.",
     prompt: "You are a senior principal engineer. Review the provided code diffs. Look for security vulnerabilities, performance bottlenecks, and adherence to clean code principles. Provide specific actionable feedback.",
-    model: "claude-3-5-sonnet",
+    model: "claude-sonnet-4-6",
     approvalMode: "auto"
   },
   {
@@ -45,7 +45,7 @@ const TEMPLATES = [
     icon: FileText,
     description: "Extracts key insights from reports and spreadsheets.",
     prompt: "You are a data analyst. Extract the top 3 trends, key metrics, and an executive summary from the provided data. Format output as clear markdown.",
-    model: "gpt-4o-mini",
+    model: "claude-haiku-4-5",
     approvalMode: "auto"
   },
   {
@@ -54,7 +54,7 @@ const TEMPLATES = [
     icon: AlertTriangle,
     description: "Investigates alerts, checks logs, and proposes mitigations.",
     prompt: "You are an SRE on-call. An alert has fired. Query the necessary logs to determine root cause. Propose a mitigation strategy and evaluate risks.",
-    model: "claude-3-5-sonnet",
+    model: "claude-sonnet-4-6",
     approvalMode: "human_in_loop"
   },
   {
@@ -63,7 +63,7 @@ const TEMPLATES = [
     icon: PenTool,
     description: "Generates blog posts, changelogs, and documentation.",
     prompt: "You are a technical writer. Draft clear, engaging content based on the provided technical bullet points. Use active voice and maintain a professional yet accessible tone.",
-    model: "gpt-4o",
+    model: "claude-sonnet-4-6",
     approvalMode: "auto"
   }
 ];
@@ -220,10 +220,9 @@ export default function AgentsNewPage() {
                         <SelectValue placeholder="Select model" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                        <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
-                        <SelectItem value="claude-3-5-sonnet">Claude 3.5 Sonnet</SelectItem>
-                        <SelectItem value="claude-3-haiku">Claude 3 Haiku</SelectItem>
+                        <SelectItem value="claude-sonnet-4-6">Claude Sonnet 4 (claude-sonnet-4-6)</SelectItem>
+                        <SelectItem value="claude-haiku-4-5">Claude Haiku 4 (claude-haiku-4-5)</SelectItem>
+                        <SelectItem value="claude-opus-4-6">Claude Opus 4 (claude-opus-4-6)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
