@@ -79,12 +79,12 @@ router.post("/runs/:runId/approve", requireAuth, async (req, res): Promise<void>
     .where(and(eq(agentRunsTable.id, runId), eq(agentRunsTable.tenantId, req.tenantId)))
     .returning();
 
-  // Re-enqueue the run job so the worker picks it up with approved status
-  await enqueueAgentRun({
-    runId: updated.id,
-    agentId: updated.agentId,
-    tenantId: updated.tenantId,
-  });
+  // Re-enqueue the run job with a unique jobId so BullMQ does not deduplicate
+  // against the original job (which completed when the run first paused).
+  await enqueueAgentRun(
+    { runId: updated.id, agentId: updated.agentId, tenantId: updated.tenantId },
+    { isResume: true }
+  );
 
   res.json(updated);
 });

@@ -74,6 +74,12 @@ export class AgentRunner {
     let totalTokens = run.totalTokens ?? 0;
     let costCents = run.costCents ?? 0;
 
+    // Track model turns (not raw step-object count) for maxSteps enforcement.
+    // Each model call = 1 turn; count prior turns from thought/final_answer steps.
+    let turnCount = steps.filter(
+      (s) => s.type === "thought" || s.type === "final_answer"
+    ).length;
+
     // Load MCP connections
     const toolWhitelist = Array.isArray(agent.tools) ? (agent.tools as string[]) : [];
     const mcpClients = await this.loadMcpClients(toolWhitelist);
@@ -111,8 +117,6 @@ export class AgentRunner {
       messages = [{ role: "user", content: userMessage }];
     }
 
-    let stepCount = steps.length;
-
     try {
       // If we resumed with pending tool calls, process them first
       if (pendingToolUse && pendingToolUse.length > 0) {
@@ -122,7 +126,7 @@ export class AgentRunner {
         pendingToolUse = null;
       }
 
-      while (stepCount < agent.maxSteps) {
+      while (turnCount < agent.maxSteps) {
         // Check for cancellation
         const [currentRun] = await db
           .select({ status: agentRunsTable.status })
@@ -147,7 +151,7 @@ export class AgentRunner {
         const stepTokens = response.usage.input_tokens + response.usage.output_tokens;
         totalTokens += stepTokens;
         costCents += stepTokens * COST_PER_TOKEN_CENTS;
-        stepCount++;
+        turnCount++; // one model turn consumed
 
         // Budget check
         if (costCents > agent.maxBudgetCents) {
