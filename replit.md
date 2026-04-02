@@ -2,7 +2,7 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+AaaS (Agentic as a Service) platform — a full-stack SaaS tool where developers and ops teams create, configure, and monitor autonomous AI agents. Built as a pnpm monorepo with TypeScript throughout.
 
 ## Stack
 
@@ -15,6 +15,73 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
+- **Frontend**: React + Vite, wouter routing, shadcn/ui, Tailwind CSS, recharts
+- **Auth**: Clerk (multi-tenant, cookie-based sessions)
+
+## Architecture
+
+```
+artifacts/
+  api-server/        - Express 5 API server (port from env PORT)
+  aaas-platform/     - React/Vite frontend (port 20501)
+lib/
+  api-spec/          - OpenAPI spec (openapi.yaml) — source of truth
+  api-client-react/  - Orval-generated React Query hooks
+  api-zod/           - Orval-generated Zod validation schemas
+  db/                - Drizzle ORM schema + client
+```
+
+## Database Schema
+
+- `tenants` — Organizations/workspaces (id, name, plan, apiKeyHash, settings)
+- `users` — Users linked to tenants via Clerk userId (id, tenantId, clerkUserId, email, role)
+- `agents` — AI agent configs (name, systemPrompt, model, tools, maxSteps, maxBudgetCents, approvalMode, status)
+- `agent_runs` — Individual run records (agentId, trigger, input, status, steps, tokens, cost)
+- `mcp_connections` — MCP tool server connections (name, serverUrl, apiKey, status)
+- `webhooks` — Webhook endpoints per agent (url, events[])
+- `scheduled_triggers` — Cron schedules per agent (cronExpression, inputTemplate, enabled)
+
+## API Routes
+
+- `GET /api/health` — health check
+- `GET /api/auth/me` — get current user + tenant
+- `POST /api/auth/onboard` — create tenant+user on first login
+- `GET/POST /api/agents` — list/create agents
+- `GET/PUT/DELETE /api/agents/:id` — agent CRUD
+- `POST /api/agents/:id/runs` — trigger agent run
+- `GET /api/runs` — list all runs (with filtering)
+- `GET /api/runs/:id` — get run detail
+- `POST /api/runs/:id/approve` — approve human-in-loop run
+- `POST /api/runs/:id/cancel` — cancel run
+- `GET/POST /api/mcp-connections` — list/create MCP connections
+- `DELETE /api/mcp-connections/:id` — delete connection
+- `POST /api/mcp-connections/:id/test` — test connection
+- `GET/POST /api/webhooks` — list/create webhooks
+- `DELETE /api/webhooks/:id` — delete webhook
+- `GET/POST /api/schedules` — list/create schedules
+- `PUT/DELETE /api/schedules/:id` — update/delete schedule
+- `GET /api/analytics/usage` — usage analytics (daily breakdown)
+- `GET /api/analytics/agents` — per-agent analytics
+
+## Frontend Pages
+
+- `/` — Landing page (redirects signed-in users to /dashboard)
+- `/sign-in`, `/sign-up` — Clerk auth pages
+- `/onboard` — Workspace setup for new users
+- `/dashboard` — Overview with recharts, recent runs, stats
+- `/agents` — Agent list with status badges and search
+- `/agents/new` — Agent creation wizard with 5 starter templates
+- `/agents/:id` — Agent detail with edit-in-place
+- `/runs` — All runs with status/agent filtering
+- `/runs/:id` — Run detail with step-by-step execution trace
+- `/connections` — MCP connection management
+- `/settings` — Tenant settings + webhooks management
+
+## Multi-tenancy
+
+- All API routes filter by `tenant_id` derived from Clerk session — never from client
+- New users POST /api/auth/onboard to create their tenant workspace
+- If GET /api/auth/me returns 403, user is redirected to /onboard
 
 ## Key Commands
 

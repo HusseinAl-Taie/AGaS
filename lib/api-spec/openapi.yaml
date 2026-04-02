@@ -3,13 +3,28 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Agentic as a Service (AaaS) API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication and tenant management
+  - name: agents
+    description: Agent CRUD and execution
+  - name: runs
+    description: Agent run management
+  - name: mcp-connections
+    description: MCP tool server connections
+  - name: webhooks
+    description: Webhook management
+  - name: schedules
+    description: Scheduled trigger management
+  - name: analytics
+    description: Usage analytics
+
 paths:
   /healthz:
     get:
@@ -24,7 +39,664 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user and tenant
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWithTenant"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/onboard:
+    post:
+      operationId: onboardUser
+      tags: [auth]
+      summary: Create tenant and user on first login
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardRequest"
+      responses:
+        "201":
+          description: Tenant and user created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWithTenant"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List all agents for the tenant
+      security:
+        - clerkSession: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, paused, archived]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      operationId: createAgent
+      tags: [agents]
+      summary: Create a new agent
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+      responses:
+        "201":
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agents/{agentId}:
+    get:
+      operationId: getAgent
+      tags: [agents]
+      summary: Get agent details
+      security:
+        - clerkSession: []
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      operationId: updateAgent
+      tags: [agents]
+      summary: Update an agent
+      security:
+        - clerkSession: []
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentRequest"
+      responses:
+        "200":
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      operationId: deleteAgent
+      tags: [agents]
+      summary: Archive an agent
+      security:
+        - clerkSession: []
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agent archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agents/{agentId}/run:
+    post:
+      operationId: triggerAgentRun
+      tags: [agents]
+      summary: Trigger an agent run
+      security:
+        - clerkSession: []
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerRunRequest"
+      responses:
+        "201":
+          description: Run queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRun"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /runs:
+    get:
+      operationId: listRuns
+      tags: [runs]
+      summary: List all runs for the tenant
+      security:
+        - clerkSession: []
+      parameters:
+        - name: agentId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, running, awaiting_approval, completed, failed, cancelled, budget_exceeded]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of runs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRunList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /runs/{runId}:
+    get:
+      operationId: getRun
+      tags: [runs]
+      summary: Get run details and steps
+      security:
+        - clerkSession: []
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRunDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /runs/{runId}/approve:
+    post:
+      operationId: approveRun
+      tags: [runs]
+      summary: Approve a pending tool call (human-in-the-loop)
+      security:
+        - clerkSession: []
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Run approved and resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRun"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /runs/{runId}/cancel:
+    post:
+      operationId: cancelRun
+      tags: [runs]
+      summary: Cancel a running agent
+      security:
+        - clerkSession: []
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Run cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRun"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp-connections:
+    get:
+      operationId: listMcpConnections
+      tags: [mcp-connections]
+      summary: List MCP connections
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: List of MCP connections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpConnectionList"
+
+    post:
+      operationId: createMcpConnection
+      tags: [mcp-connections]
+      summary: Add an MCP server connection
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMcpConnectionRequest"
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpConnection"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp-connections/{connectionId}:
+    delete:
+      operationId: deleteMcpConnection
+      tags: [mcp-connections]
+      summary: Remove an MCP connection
+      security:
+        - clerkSession: []
+      parameters:
+        - name: connectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Connection deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpConnection"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp-connections/{connectionId}/test:
+    post:
+      operationId: testMcpConnection
+      tags: [mcp-connections]
+      summary: Test connection and list available tools
+      security:
+        - clerkSession: []
+      parameters:
+        - name: connectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpConnectionTestResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /webhooks:
+    get:
+      operationId: listWebhooks
+      tags: [webhooks]
+      summary: List webhooks
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: List of webhooks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookList"
+
+    post:
+      operationId: createWebhook
+      tags: [webhooks]
+      summary: Register a webhook
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookRequest"
+      responses:
+        "201":
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /webhooks/{webhookId}:
+    delete:
+      operationId: deleteWebhook
+      tags: [webhooks]
+      summary: Remove a webhook
+      security:
+        - clerkSession: []
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Webhook deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /schedules:
+    get:
+      operationId: listSchedules
+      tags: [schedules]
+      summary: List scheduled triggers
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: List of schedules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleList"
+
+    post:
+      operationId: createSchedule
+      tags: [schedules]
+      summary: Create a scheduled trigger
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScheduleRequest"
+      responses:
+        "201":
+          description: Schedule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /schedules/{scheduleId}:
+    put:
+      operationId: updateSchedule
+      tags: [schedules]
+      summary: Update a scheduled trigger
+      security:
+        - clerkSession: []
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateScheduleRequest"
+      responses:
+        "200":
+          description: Schedule updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      operationId: deleteSchedule
+      tags: [schedules]
+      summary: Delete a scheduled trigger
+      security:
+        - clerkSession: []
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Schedule deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analytics/usage:
+    get:
+      operationId: getUsageAnalytics
+      tags: [analytics]
+      summary: Get usage analytics over time
+      security:
+        - clerkSession: []
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: Usage analytics data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAnalytics"
+
+  /analytics/agents:
+    get:
+      operationId: getAgentAnalytics
+      tags: [analytics]
+      summary: Get per-agent performance stats
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: Per-agent stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentAnalyticsList"
+
 components:
+  securitySchemes:
+    clerkSession:
+      type: apiKey
+      in: cookie
+      name: __session
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +706,556 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        plan:
+          type: string
+          enum: [free, pro, enterprise]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - plan
+        - createdAt
+
+    UserWithTenant:
+      type: object
+      properties:
+        id:
+          type: string
+        clerkUserId:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, member]
+        tenant:
+          $ref: "#/components/schemas/Tenant"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - clerkUserId
+        - email
+        - role
+        - tenant
+        - createdAt
+
+    OnboardRequest:
+      type: object
+      properties:
+        tenantName:
+          type: string
+        email:
+          type: string
+      required:
+        - tenantName
+        - email
+
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        systemPrompt:
+          type: string
+        model:
+          type: string
+        tools:
+          type: array
+          items: {}
+        maxSteps:
+          type: integer
+        maxBudgetCents:
+          type: integer
+        approvalMode:
+          type: string
+          enum: [auto, human_in_loop]
+        status:
+          type: string
+          enum: [active, paused, archived]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - name
+        - description
+        - systemPrompt
+        - model
+        - tools
+        - maxSteps
+        - maxBudgetCents
+        - approvalMode
+        - status
+        - createdAt
+        - updatedAt
+
+    AgentList:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+        total:
+          type: integer
+      required:
+        - agents
+        - total
+
+    CreateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        systemPrompt:
+          type: string
+        model:
+          type: string
+        tools:
+          type: array
+          items: {}
+        maxSteps:
+          type: integer
+        maxBudgetCents:
+          type: integer
+        approvalMode:
+          type: string
+          enum: [auto, human_in_loop]
+      required:
+        - name
+
+    UpdateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        systemPrompt:
+          type: string
+        model:
+          type: string
+        tools:
+          type: array
+          items: {}
+        maxSteps:
+          type: integer
+        maxBudgetCents:
+          type: integer
+        approvalMode:
+          type: string
+          enum: [auto, human_in_loop]
+        status:
+          type: string
+          enum: [active, paused, archived]
+
+    AgentRunStep:
+      type: object
+      properties:
+        stepNumber:
+          type: integer
+        thought:
+          type: ["string", "null"]
+        toolCalls:
+          type: array
+          items: {}
+        toolResults:
+          type: array
+          items: {}
+        tokensUsed:
+          type: integer
+      required:
+        - stepNumber
+        - tokensUsed
+
+    AgentRun:
+      type: object
+      properties:
+        id:
+          type: string
+        agentId:
+          type: string
+        tenantId:
+          type: string
+        trigger:
+          type: string
+          enum: [manual, api, schedule, webhook]
+        input:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [queued, running, awaiting_approval, completed, failed, cancelled, budget_exceeded]
+        output:
+          type: ["object", "null"]
+          additionalProperties: true
+        totalTokens:
+          type: integer
+        costCents:
+          type: integer
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        error:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - agentId
+        - tenantId
+        - trigger
+        - input
+        - status
+        - totalTokens
+        - costCents
+        - createdAt
+
+    AgentRunDetail:
+      allOf:
+        - $ref: "#/components/schemas/AgentRun"
+        - type: object
+          properties:
+            steps:
+              type: array
+              items:
+                $ref: "#/components/schemas/AgentRunStep"
+            agent:
+              $ref: "#/components/schemas/Agent"
+          required:
+            - steps
+            - agent
+
+    AgentRunList:
+      type: object
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentRun"
+        total:
+          type: integer
+      required:
+        - runs
+        - total
+
+    TriggerRunRequest:
+      type: object
+      properties:
+        input:
+          type: object
+          additionalProperties: true
+        trigger:
+          type: string
+          enum: [manual, api]
+      required:
+        - input
+
+    McpConnection:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        name:
+          type: string
+        serverUrl:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, error]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - name
+        - serverUrl
+        - status
+        - createdAt
+
+    McpConnectionList:
+      type: object
+      properties:
+        connections:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpConnection"
+      required:
+        - connections
+
+    CreateMcpConnectionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        serverUrl:
+          type: string
+        authConfig:
+          type: object
+          additionalProperties: true
+      required:
+        - name
+        - serverUrl
+
+    McpConnectionTestResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        tools:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              description:
+                type: string
+            required:
+              - name
+        error:
+          type: ["string", "null"]
+      required:
+        - success
+        - tools
+
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        agentId:
+          type: ["string", "null"]
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - url
+        - events
+        - createdAt
+
+    WebhookList:
+      type: object
+      properties:
+        webhooks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Webhook"
+      required:
+        - webhooks
+
+    CreateWebhookRequest:
+      type: object
+      properties:
+        url:
+          type: string
+        agentId:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        secret:
+          type: string
+      required:
+        - url
+        - events
+        - secret
+
+    Schedule:
+      type: object
+      properties:
+        id:
+          type: string
+        agentId:
+          type: string
+        tenantId:
+          type: string
+        cronExpression:
+          type: string
+        inputTemplate:
+          type: object
+          additionalProperties: true
+        enabled:
+          type: boolean
+        nextRunAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - agentId
+        - tenantId
+        - cronExpression
+        - inputTemplate
+        - enabled
+        - createdAt
+        - updatedAt
+
+    ScheduleList:
+      type: object
+      properties:
+        schedules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Schedule"
+      required:
+        - schedules
+
+    CreateScheduleRequest:
+      type: object
+      properties:
+        agentId:
+          type: string
+        cronExpression:
+          type: string
+        inputTemplate:
+          type: object
+          additionalProperties: true
+        enabled:
+          type: boolean
+      required:
+        - agentId
+        - cronExpression
+
+    UpdateScheduleRequest:
+      type: object
+      properties:
+        cronExpression:
+          type: string
+        inputTemplate:
+          type: object
+          additionalProperties: true
+        enabled:
+          type: boolean
+
+    UsageDayStats:
+      type: object
+      properties:
+        date:
+          type: string
+        runs:
+          type: integer
+        tokens:
+          type: integer
+        costCents:
+          type: integer
+        successRate:
+          type: number
+      required:
+        - date
+        - runs
+        - tokens
+        - costCents
+        - successRate
+
+    UsageAnalytics:
+      type: object
+      properties:
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageDayStats"
+        totalRuns:
+          type: integer
+        totalTokens:
+          type: integer
+        totalCostCents:
+          type: integer
+        successRate:
+          type: number
+      required:
+        - days
+        - totalRuns
+        - totalTokens
+        - totalCostCents
+        - successRate
+
+    AgentStats:
+      type: object
+      properties:
+        agentId:
+          type: string
+        agentName:
+          type: string
+        totalRuns:
+          type: integer
+        successRate:
+          type: number
+        avgCostCents:
+          type: integer
+        avgSteps:
+          type: number
+        avgTokens:
+          type: integer
+      required:
+        - agentId
+        - agentName
+        - totalRuns
+        - successRate
+        - avgCostCents
+        - avgSteps
+        - avgTokens
+
+    AgentAnalyticsList:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentStats"
+      required:
+        - agents

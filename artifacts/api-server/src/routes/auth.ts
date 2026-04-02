@@ -1,0 +1,103 @@
+import { Router, type IRouter } from "express";
+import { db, usersTable, tenantsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { requireAuth, requireAuthOrOnboard } from "../middlewares/requireAuth";
+
+const router: IRouter = Router();
+
+router.get("/auth/me", requireAuthOrOnboard, async (req, res): Promise<void> => {
+  if (!req.userId) {
+    res.status(403).json({ error: "User not onboarded" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, user.tenantId));
+  if (!tenant) {
+    res.status(404).json({ error: "Tenant not found" });
+    return;
+  }
+
+  res.json({
+    id: user.id,
+    clerkUserId: user.clerkUserId,
+    email: user.email,
+    role: user.role,
+    tenant: {
+      id: tenant.id,
+      name: tenant.name,
+      plan: tenant.plan,
+      createdAt: tenant.createdAt,
+    },
+    createdAt: user.createdAt,
+  });
+});
+
+router.post("/auth/onboard", requireAuthOrOnboard, async (req, res): Promise<void> => {
+  const { tenantName, email } = req.body;
+
+  if (!tenantName || !email) {
+    res.status(400).json({ error: "tenantName and email are required" });
+    return;
+  }
+
+  const existingUser = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.clerkUserId, req.clerkUserId));
+
+  if (existingUser.length > 0) {
+    const user = existingUser[0];
+    const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, user.tenantId));
+    res.status(200).json({
+      id: user.id,
+      clerkUserId: user.clerkUserId,
+      email: user.email,
+      role: user.role,
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        plan: tenant.plan,
+        createdAt: tenant.createdAt,
+      },
+      createdAt: user.createdAt,
+    });
+    return;
+  }
+
+  const [tenant] = await db
+    .insert(tenantsTable)
+    .values({ name: tenantName })
+    .returning();
+
+  const [user] = await db
+    .insert(usersTable)
+    .values({
+      tenantId: tenant.id,
+      clerkUserId: req.clerkUserId,
+      email,
+      role: "owner",
+    })
+    .returning();
+
+  res.status(201).json({
+    id: user.id,
+    clerkUserId: user.clerkUserId,
+    email: user.email,
+    role: user.role,
+    tenant: {
+      id: tenant.id,
+      name: tenant.name,
+      plan: tenant.plan,
+      createdAt: tenant.createdAt,
+    },
+    createdAt: user.createdAt,
+  });
+});
+
+export default router;

@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "AaaS Platform"
+version = "1.0.0"
+id = "artifacts/aaas-platform"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20501
+
+[services.development]
+run = "pnpm --filter @workspace/aaas-platform run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/aaas-platform", "run", "build" ]
+publicDir = "artifacts/aaas-platform/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20501"
+BASE_PATH = "/"
