@@ -420,6 +420,20 @@ export class AgentRunner {
     output: Record<string, unknown> | null,
     error: string | null
   ) {
+    // Guard: do not overwrite a cancellation that was set while the run was in-flight.
+    // The cancel API sets status="cancelled" and the run may have observed it mid-step;
+    // writing "completed" or "failed" afterwards would silently discard the cancellation.
+    if (status !== "cancelled" && status !== "awaiting_approval") {
+      const [current] = await db
+        .select({ status: agentRunsTable.status })
+        .from(agentRunsTable)
+        .where(and(eq(agentRunsTable.id, this.runId), eq(agentRunsTable.tenantId, this.tenantId)));
+      if (current?.status === "cancelled") {
+        // Already cancelled by the API — skip the overwrite and let the existing SSE/webhook events stand
+        return;
+      }
+    }
+
     await db
       .update(agentRunsTable)
       .set({

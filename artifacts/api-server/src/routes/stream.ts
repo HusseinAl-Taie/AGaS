@@ -26,14 +26,18 @@ router.get("/runs/:runId/stream", requireAuth, async (req, res): Promise<void> =
     return;
   }
 
-  // If the run is already done, just send a done event and close
+  // If the run is already in a terminal or paused state, emit appropriate event and close.
+  // "awaiting_approval" is treated as stream-terminal: the run is paused and won't produce
+  // more step events until approved (at which point a new SSE connection is opened).
   const terminalStatuses = ["completed", "failed", "cancelled", "budget_exceeded"];
-  if (terminalStatuses.includes(run.status)) {
+  const streamTerminalStatuses = [...terminalStatuses, "awaiting_approval"];
+  if (streamTerminalStatuses.includes(run.status)) {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
-    res.write(`data: ${JSON.stringify({ type: "done", payload: { status: run.status } })}\n\n`);
+    const eventType = terminalStatuses.includes(run.status) ? "done" : "status";
+    res.write(`data: ${JSON.stringify({ type: eventType, payload: { status: run.status } })}\n\n`);
     res.end();
     return;
   }
@@ -89,8 +93,9 @@ router.get("/runs/:runId/stream", requireAuth, async (req, res): Promise<void> =
       .from(agentRunsTable)
       .where(and(eq(agentRunsTable.id, runId), eq(agentRunsTable.tenantId, req.tenantId)));
 
-    if (currentRun && terminalStatuses.includes(currentRun.status)) {
-      res.write(`data: ${JSON.stringify({ type: "done", payload: { status: currentRun.status } })}\n\n`);
+    if (currentRun && streamTerminalStatuses.includes(currentRun.status)) {
+      const eventType = terminalStatuses.includes(currentRun.status) ? "done" : "status";
+      res.write(`data: ${JSON.stringify({ type: eventType, payload: { status: currentRun.status } })}\n\n`);
       cleanup();
       res.end();
     }
