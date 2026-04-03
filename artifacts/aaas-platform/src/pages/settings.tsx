@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { useGetMe, useListWebhooks, useCreateWebhook, useDeleteWebhook, getListWebhooksQueryKey, useRotateApiKey } from "@workspace/api-client-react";
+import { useGetMe, useListWebhooks, useCreateWebhook, useDeleteWebhook, getListWebhooksQueryKey, useRotateApiKey, WebhookEvent } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ export default function SettingsPage() {
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [url, setUrl] = useState("");
-  const [event, setEvent] = useState("run.completed");
+  const [event, setEvent] = useState<WebhookEvent>(WebhookEvent.runcompleted);
   const [secret, setSecret] = useState("");
   
   const [copiedKey, setCopiedKey] = useState(false);
@@ -194,7 +194,7 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Event to subscribe to</Label>
-                      <Select value={event} onValueChange={setEvent}>
+                      <Select value={event} onValueChange={(v) => setEvent(v as WebhookEvent)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="run.completed">Run Completed</SelectItem>

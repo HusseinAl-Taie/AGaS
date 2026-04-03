@@ -269,13 +269,25 @@ export interface McpConnectionTestResult {
   error?: string | null;
 }
 
+/**
+ * Webhook event type emitted when a run changes state.
+ */
+export type WebhookEvent = (typeof WebhookEvent)[keyof typeof WebhookEvent];
+
+export const WebhookEvent = {
+  runcompleted: "run.completed",
+  runfailed: "run.failed",
+  approvalrequired: "approval.required",
+  runcancelled: "run.cancelled",
+} as const;
+
 export interface Webhook {
   id: string;
   tenantId: string;
   /** @nullable */
   agentId?: string | null;
   url: string;
-  events: string[];
+  events: WebhookEvent[];
   createdAt: string;
 }
 
@@ -286,15 +298,34 @@ export interface WebhookList {
 export interface CreateWebhookRequest {
   url: string;
   agentId?: string;
-  events: string[];
+  events: WebhookEvent[];
   secret: string;
 }
 
 export interface UpdateWebhookRequest {
   url?: string;
   agentId?: string;
-  events?: string[];
+  events?: WebhookEvent[];
   secret?: string;
+}
+
+export type RunStreamEventType =
+  (typeof RunStreamEventType)[keyof typeof RunStreamEventType];
+
+export const RunStreamEventType = {
+  step: "step",
+  status: "status",
+  done: "done",
+} as const;
+
+export type RunStreamEventPayload = { [key: string]: unknown };
+
+/**
+ * An event emitted over the SSE stream for a live run.
+ */
+export interface RunStreamEvent {
+  type: RunStreamEventType;
+  payload: RunStreamEventPayload;
 }
 
 export interface ApiKeyRotateResponse {

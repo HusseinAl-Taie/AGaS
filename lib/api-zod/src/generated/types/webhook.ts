@@ -5,6 +5,7 @@
  * Agentic as a Service (AaaS) API
  * OpenAPI spec version: 0.1.0
  */
+import type { WebhookEvent } from "./webhookEvent";
 
 export interface Webhook {
   id: string;
@@ -12,6 +13,6 @@ export interface Webhook {
   /** @nullable */
   agentId?: string | null;
   url: string;
-  events: string[];
+  events: WebhookEvent[];
   createdAt: Date;
 }

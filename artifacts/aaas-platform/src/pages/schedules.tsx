@@ -7,6 +7,7 @@ import {
   useDeleteSchedule,
   useListAgents,
   getListSchedulesQueryKey,
+  type Schedule,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calendar, Plus, Trash2, Clock } from "lucide-react";
+import { Calendar, Plus, Trash2, Clock, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, parseISO } from "date-fns";
@@ -53,6 +54,37 @@ const PRESET_CRONS = [
   { label: "Custom", value: "custom" },
 ];
 
+function detectPreset(expr: string): string {
+  const found = PRESET_CRONS.find((p) => p.value !== "custom" && p.value === expr);
+  return found ? found.value : "custom";
+}
+
+interface ScheduleFormState {
+  selectedAgentId: string;
+  cronPreset: string;
+  customCron: string;
+  inputTemplate: string;
+  inputTemplateError: string;
+}
+
+const defaultForm = (): ScheduleFormState => ({
+  selectedAgentId: "",
+  cronPreset: PRESET_CRONS[2].value,
+  customCron: "",
+  inputTemplate: "{}",
+  inputTemplateError: "",
+});
+
+function formFromSchedule(s: Schedule): ScheduleFormState {
+  return {
+    selectedAgentId: s.agentId,
+    cronPreset: detectPreset(s.cronExpression),
+    customCron: detectPreset(s.cronExpression) === "custom" ? s.cronExpression : "",
+    inputTemplate: JSON.stringify(s.inputTemplate ?? {}, null, 2),
+    inputTemplateError: "",
+  };
+}
+
 export default function SchedulesPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -63,52 +95,88 @@ export default function SchedulesPage() {
   const updateSchedule = useUpdateSchedule();
   const deleteSchedule = useDeleteSchedule();
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState("");
-  const [cronPreset, setCronPreset] = useState(PRESET_CRONS[2].value);
-  const [customCron, setCustomCron] = useState("");
-  const [inputTemplate, setInputTemplate] = useState("{}");
-  const [inputTemplateError, setInputTemplateError] = useState("");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
+  const [form, setForm] = useState<ScheduleFormState>(defaultForm());
 
-  const cronExpression = cronPreset === "custom" ? customCron : cronPreset;
   const agents = agentsData?.agents ?? [];
   const schedules = schedulesData?.schedules ?? [];
 
-  const resetForm = () => {
-    setSelectedAgentId("");
-    setCronPreset(PRESET_CRONS[2].value);
-    setCustomCron("");
-    setInputTemplate("{}");
-    setInputTemplateError("");
+  const cronExpression = form.cronPreset === "custom" ? form.customCron : form.cronPreset;
+
+  const updateForm = (patch: Partial<ScheduleFormState>) =>
+    setForm((prev) => ({ ...prev, ...patch }));
+
+  const openCreate = () => {
+    setForm(defaultForm());
+    setIsCreateOpen(true);
+  };
+
+  const openEdit = (s: Schedule) => {
+    setForm(formFromSchedule(s));
+    setEditingSchedule(s);
+  };
+
+  const closeDialogs = () => {
+    setIsCreateOpen(false);
+    setEditingSchedule(null);
+    setForm(defaultForm());
+  };
+
+  const parseInputTemplate = (): Record<string, unknown> | null => {
+    try {
+      const parsed = JSON.parse(form.inputTemplate) as Record<string, unknown>;
+      updateForm({ inputTemplateError: "" });
+      return parsed;
+    } catch {
+      updateForm({ inputTemplateError: "Invalid JSON" });
+      return null;
+    }
   };
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAgentId || !cronExpression) {
+    if (!form.selectedAgentId || !cronExpression) {
       toast({ title: "Agent and cron expression are required", variant: "destructive" });
       return;
     }
-
-    let parsedInput: Record<string, unknown> = {};
-    try {
-      parsedInput = JSON.parse(inputTemplate) as Record<string, unknown>;
-      setInputTemplateError("");
-    } catch {
-      setInputTemplateError("Invalid JSON");
-      return;
-    }
+    const parsedInput = parseInputTemplate();
+    if (parsedInput === null) return;
 
     createSchedule.mutate(
-      { data: { agentId: selectedAgentId, cronExpression, inputTemplate: parsedInput, enabled: true } },
+      { data: { agentId: form.selectedAgentId, cronExpression, inputTemplate: parsedInput, enabled: true } },
       {
         onSuccess: () => {
           toast({ title: "Schedule created" });
           queryClient.invalidateQueries({ queryKey: getListSchedulesQueryKey() });
-          setIsDialogOpen(false);
-          resetForm();
+          closeDialogs();
         },
         onError: (err) => {
           toast({ title: "Failed to create schedule", description: err.message, variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  const handleEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSchedule || !cronExpression) return;
+    const parsedInput = parseInputTemplate();
+    if (parsedInput === null) return;
+
+    updateSchedule.mutate(
+      {
+        scheduleId: editingSchedule.id,
+        data: { cronExpression, inputTemplate: parsedInput },
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "Schedule updated" });
+          queryClient.invalidateQueries({ queryKey: getListSchedulesQueryKey() });
+          closeDialogs();
+        },
+        onError: (err) => {
+          toast({ title: "Update failed", description: err.message, variant: "destructive" });
         },
       }
     );
@@ -148,6 +216,73 @@ export default function SchedulesPage() {
     return agent?.name ?? agentId.slice(0, 8);
   };
 
+  const ScheduleForm = ({ mode }: { mode: "create" | "edit" }) => (
+    <form onSubmit={mode === "create" ? handleCreate : handleEdit} className="space-y-4">
+      {mode === "create" && (
+        <div className="space-y-2">
+          <Label>Agent</Label>
+          <Select value={form.selectedAgentId} onValueChange={(v) => updateForm({ selectedAgentId: v })}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select an agent" />
+            </SelectTrigger>
+            <SelectContent>
+              {agents.map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Label>Frequency</Label>
+        <Select value={form.cronPreset} onValueChange={(v) => updateForm({ cronPreset: v })}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PRESET_CRONS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {form.cronPreset === "custom" ? (
+          <Input
+            placeholder="e.g. 0 9 * * 1-5"
+            value={form.customCron}
+            onChange={(e) => updateForm({ customCron: e.target.value })}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground font-mono">{cronExpression}</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Input Template (JSON)</Label>
+        <Input
+          placeholder='{"message": "Daily report"}'
+          value={form.inputTemplate}
+          onChange={(e) => updateForm({ inputTemplate: e.target.value })}
+        />
+        {form.inputTemplateError && (
+          <p className="text-xs text-destructive">{form.inputTemplateError}</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          JSON object passed as input when this schedule fires.
+        </p>
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={closeDialogs}>Cancel</Button>
+        <Button type="submit" disabled={createSchedule.isPending || updateSchedule.isPending}>
+          {mode === "create"
+            ? (createSchedule.isPending ? "Creating…" : "Create")
+            : (updateSchedule.isPending ? "Saving…" : "Save Changes")}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+
   return (
     <AppLayout>
       <div className="flex flex-col gap-6">
@@ -157,9 +292,9 @@ export default function SchedulesPage() {
             <p className="text-muted-foreground">Run agents automatically on a cron schedule.</p>
           </div>
 
-          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
+          <Dialog open={isCreateOpen} onOpenChange={(open) => { if (!open) closeDialogs(); else openCreate(); }}>
             <DialogTrigger asChild>
-              <Button>
+              <Button onClick={openCreate}>
                 <Plus className="w-4 h-4 mr-2" /> New Schedule
               </Button>
             </DialogTrigger>
@@ -168,70 +303,21 @@ export default function SchedulesPage() {
                 <DialogTitle>Create Schedule</DialogTitle>
                 <DialogDescription>Configure a cron trigger for an agent.</DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Agent</Label>
-                  <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an agent" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {agents.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Frequency</Label>
-                  <Select value={cronPreset} onValueChange={setCronPreset}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PRESET_CRONS.map((p) => (
-                        <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {cronPreset === "custom" && (
-                    <Input
-                      placeholder="e.g. 0 9 * * 1-5"
-                      value={customCron}
-                      onChange={(e) => setCustomCron(e.target.value)}
-                    />
-                  )}
-                  {cronPreset !== "custom" && (
-                    <p className="text-xs text-muted-foreground font-mono">{cronExpression}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Input Template (JSON)</Label>
-                  <Input
-                    placeholder='{"message": "Daily report"}'
-                    value={inputTemplate}
-                    onChange={(e) => setInputTemplate(e.target.value)}
-                  />
-                  {inputTemplateError && (
-                    <p className="text-xs text-destructive">{inputTemplateError}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    JSON object passed as input when this schedule fires.
-                  </p>
-                </div>
-
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                  <Button type="submit" disabled={createSchedule.isPending}>
-                    {createSchedule.isPending ? "Creating…" : "Create"}
-                  </Button>
-                </DialogFooter>
-              </form>
+              <ScheduleForm mode="create" />
             </DialogContent>
           </Dialog>
         </div>
+
+        {/* Edit Dialog */}
+        <Dialog open={!!editingSchedule} onOpenChange={(open) => { if (!open) closeDialogs(); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Schedule</DialogTitle>
+              <DialogDescription>Update the cron expression or input template.</DialogDescription>
+            </DialogHeader>
+            <ScheduleForm mode="edit" />
+          </DialogContent>
+        </Dialog>
 
         <Card>
           <CardContent className="p-0">
@@ -284,16 +370,27 @@ export default function SchedulesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDelete(s.id)}
-                          disabled={deleteSchedule.isPending}
-                          data-testid={`delete-schedule-${s.id}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => openEdit(s)}
+                            data-testid={`edit-schedule-${s.id}`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => handleDelete(s.id)}
+                            disabled={deleteSchedule.isPending}
+                            data-testid={`delete-schedule-${s.id}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

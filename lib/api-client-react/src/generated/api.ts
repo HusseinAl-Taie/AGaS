@@ -1142,6 +1142,94 @@ export const useApproveRun = <
 };
 
 /**
+ * Server-Sent Events (SSE) stream for a run. Emits `step`, `status`, and `done` events.
+Each event is a JSON-encoded `RunStreamEvent` object.
+
+ * @summary Stream live run events via SSE
+ */
+export const getStreamRunUrl = (runId: string) => {
+  return `/api/runs/${runId}/stream`;
+};
+
+export const streamRun = async (
+  runId: string,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getStreamRunUrl(runId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getStreamRunQueryKey = (runId: string) => {
+  return [`/api/runs/${runId}/stream`] as const;
+};
+
+export const getStreamRunQueryOptions = <
+  TData = Awaited<ReturnType<typeof streamRun>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  runId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof streamRun>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getStreamRunQueryKey(runId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof streamRun>>> = ({
+    signal,
+  }) => streamRun(runId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!runId,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof streamRun>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type StreamRunQueryResult = NonNullable<
+  Awaited<ReturnType<typeof streamRun>>
+>;
+export type StreamRunQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Stream live run events via SSE
+ */
+
+export function useStreamRun<
+  TData = Awaited<ReturnType<typeof streamRun>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  runId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof streamRun>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getStreamRunQueryOptions(runId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Cancel a running agent
  */
 export const getCancelRunUrl = (runId: string) => {

@@ -385,6 +385,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /runs/{runId}/stream:
+    get:
+      operationId: streamRun
+      tags: [runs]
+      summary: Stream live run events via SSE
+      description: |
+        Server-Sent Events (SSE) stream for a run. Emits `step`, `status`, and `done` events.
+        Each event is a JSON-encoded `RunStreamEvent` object.
+      security:
+        - clerkSession: []
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE stream of run events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /runs/{runId}/cancel:
     post:
       operationId: cancelRun
@@ -1214,6 +1244,11 @@ components:
         - success
         - tools
 
+    WebhookEvent:
+      type: string
+      enum: [run.completed, run.failed, approval.required, run.cancelled]
+      description: Webhook event type emitted when a run changes state.
+
     Webhook:
       type: object
       properties:
@@ -1228,7 +1263,7 @@ components:
         events:
           type: array
           items:
-            type: string
+            $ref: "#/components/schemas/WebhookEvent"
         createdAt:
           type: string
           format: date-time
@@ -1259,7 +1294,7 @@ components:
         events:
           type: array
           items:
-            type: string
+            $ref: "#/components/schemas/WebhookEvent"
         secret:
           type: string
       required:
@@ -1277,9 +1312,23 @@ components:
         events:
           type: array
           items:
-            type: string
+            $ref: "#/components/schemas/WebhookEvent"
         secret:
           type: string
+
+    RunStreamEvent:
+      type: object
+      description: An event emitted over the SSE stream for a live run.
+      properties:
+        type:
+          type: string
+          enum: [step, status, done]
+        payload:
+          type: object
+          additionalProperties: true
+      required:
+        - type
+        - payload
 
     ApiKeyRotateResponse:
       type: object

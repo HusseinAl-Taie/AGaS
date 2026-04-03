@@ -330,6 +330,16 @@ export const ApproveRunResponse = zod.object({
 });
 
 /**
+ * Server-Sent Events (SSE) stream for a run. Emits `step`, `status`, and `done` events.
+Each event is a JSON-encoded `RunStreamEvent` object.
+
+ * @summary Stream live run events via SSE
+ */
+export const StreamRunParams = zod.object({
+  runId: zod.coerce.string(),
+});
+
+/**
  * @summary Cancel a running agent
  */
 export const CancelRunParams = zod.object({
@@ -467,7 +477,16 @@ export const ListWebhooksResponse = zod.object({
       tenantId: zod.string(),
       agentId: zod.string().nullish(),
       url: zod.string(),
-      events: zod.array(zod.string()),
+      events: zod.array(
+        zod
+          .enum([
+            "run.completed",
+            "run.failed",
+            "approval.required",
+            "run.cancelled",
+          ])
+          .describe("Webhook event type emitted when a run changes state."),
+      ),
       createdAt: zod.coerce.date(),
     }),
   ),
@@ -479,7 +498,16 @@ export const ListWebhooksResponse = zod.object({
 export const CreateWebhookBody = zod.object({
   url: zod.string(),
   agentId: zod.string().optional(),
-  events: zod.array(zod.string()),
+  events: zod.array(
+    zod
+      .enum([
+        "run.completed",
+        "run.failed",
+        "approval.required",
+        "run.cancelled",
+      ])
+      .describe("Webhook event type emitted when a run changes state."),
+  ),
   secret: zod.string(),
 });
 
@@ -495,7 +523,16 @@ export const GetWebhookResponse = zod.object({
   tenantId: zod.string(),
   agentId: zod.string().nullish(),
   url: zod.string(),
-  events: zod.array(zod.string()),
+  events: zod.array(
+    zod
+      .enum([
+        "run.completed",
+        "run.failed",
+        "approval.required",
+        "run.cancelled",
+      ])
+      .describe("Webhook event type emitted when a run changes state."),
+  ),
   createdAt: zod.coerce.date(),
 });
 
@@ -509,7 +546,18 @@ export const UpdateWebhookParams = zod.object({
 export const UpdateWebhookBody = zod.object({
   url: zod.string().optional(),
   agentId: zod.string().optional(),
-  events: zod.array(zod.string()).optional(),
+  events: zod
+    .array(
+      zod
+        .enum([
+          "run.completed",
+          "run.failed",
+          "approval.required",
+          "run.cancelled",
+        ])
+        .describe("Webhook event type emitted when a run changes state."),
+    )
+    .optional(),
   secret: zod.string().optional(),
 });
 
@@ -518,7 +566,16 @@ export const UpdateWebhookResponse = zod.object({
   tenantId: zod.string(),
   agentId: zod.string().nullish(),
   url: zod.string(),
-  events: zod.array(zod.string()),
+  events: zod.array(
+    zod
+      .enum([
+        "run.completed",
+        "run.failed",
+        "approval.required",
+        "run.cancelled",
+      ])
+      .describe("Webhook event type emitted when a run changes state."),
+  ),
   createdAt: zod.coerce.date(),
 });
 
@@ -534,7 +591,16 @@ export const DeleteWebhookResponse = zod.object({
   tenantId: zod.string(),
   agentId: zod.string().nullish(),
   url: zod.string(),
-  events: zod.array(zod.string()),
+  events: zod.array(
+    zod
+      .enum([
+        "run.completed",
+        "run.failed",
+        "approval.required",
+        "run.cancelled",
+      ])
+      .describe("Webhook event type emitted when a run changes state."),
+  ),
   createdAt: zod.coerce.date(),
 });
 
