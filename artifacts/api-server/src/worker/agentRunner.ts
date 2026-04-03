@@ -4,6 +4,8 @@ import { db, agentRunsTable, agentsTable, mcpConnectionsTable } from "@workspace
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { McpClient } from "./mcpClient";
+import { publishRunEvent } from "../lib/runEvents";
+import { enqueueWebhookDelivery, type WebhookEvent } from "../lib/webhookQueue";
 
 type RunStatus = (typeof agentRunsTable.$inferSelect)["status"];
 
@@ -227,6 +229,19 @@ export class AgentRunner {
               output: pendingState as unknown as Record<string, unknown>,
             })
             .where(and(eq(agentRunsTable.id, this.runId), eq(agentRunsTable.tenantId, this.tenantId)));
+
+          // Notify SSE subscribers and fire webhook
+          await publishRunEvent(this.runId, {
+            type: "status",
+            payload: { status: "awaiting_approval", totalTokens, costCents: Math.round(costCents) },
+          });
+          await enqueueWebhookDelivery({
+            tenantId: this.tenantId,
+            agentId: this.agentId,
+            runId: this.runId,
+            event: "approval.required",
+            payload: { status: "awaiting_approval" },
+          });
           return;
         }
 
@@ -375,6 +390,15 @@ export class AgentRunner {
         costCents: Math.round(costCents),
       })
       .where(and(eq(agentRunsTable.id, this.runId), eq(agentRunsTable.tenantId, this.tenantId)));
+
+    // Emit the latest step as a live event for SSE streaming
+    const latestStep = steps[steps.length - 1];
+    if (latestStep) {
+      await publishRunEvent(this.runId, {
+        type: "step",
+        payload: { step: latestStep, totalTokens, costCents: Math.round(costCents) },
+      });
+    }
   }
 
   private async updateRun(
@@ -397,6 +421,31 @@ export class AgentRunner {
         completedAt: new Date(),
       })
       .where(and(eq(agentRunsTable.id, this.runId), eq(agentRunsTable.tenantId, this.tenantId)));
+
+    // Publish final status event for SSE streaming
+    await publishRunEvent(this.runId, {
+      type: status === "completed" || status === "failed" || status === "budget_exceeded" ? "done" : "status",
+      payload: { status, totalTokens, costCents: Math.round(costCents), output, error },
+    });
+
+    // Fire webhook for terminal events
+    const webhookEventMap: Partial<Record<RunStatus, WebhookEvent>> = {
+      completed: "run.completed",
+      failed: "run.failed",
+      budget_exceeded: "run.failed",
+      awaiting_approval: "approval.required",
+      cancelled: "run.cancelled",
+    };
+    const webhookEvent = webhookEventMap[status];
+    if (webhookEvent) {
+      await enqueueWebhookDelivery({
+        tenantId: this.tenantId,
+        agentId: this.agentId,
+        runId: this.runId,
+        event: webhookEvent,
+        payload: { status, output, error },
+      });
+    }
   }
 
   private async failRun(error: string) {

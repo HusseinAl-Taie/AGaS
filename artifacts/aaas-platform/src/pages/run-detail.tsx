@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ArrowLeft, Check, X, Box, Terminal, Zap, Coins, Clock, AlertTriangle, Brain, Wrench, CheckCircle2, MessageSquare, RefreshCw } from "lucide-react";
+import { ArrowLeft, Check, X, Box, Terminal, Zap, Coins, Clock, AlertTriangle, Brain, Wrench, CheckCircle2, MessageSquare, RefreshCw, Radio } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, differenceInSeconds } from "date-fns";
@@ -225,9 +225,16 @@ export default function RunDetailPage() {
             )}
 
             {(run.status === 'running' || run.status === 'queued') && (
-              <Button variant="destructive" onClick={handleCancel} disabled={cancelRun.isPending}>
-                <X className="w-4 h-4 mr-2" /> Cancel Run
-              </Button>
+              <>
+                <Link href={`/runs/${run.id}/live`}>
+                  <Button variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
+                    <Radio className="w-4 h-4 mr-2" /> Live View
+                  </Button>
+                </Link>
+                <Button variant="destructive" onClick={handleCancel} disabled={cancelRun.isPending}>
+                  <X className="w-4 h-4 mr-2" /> Cancel Run
+                </Button>
+              </>
             )}
           </div>
         </div>

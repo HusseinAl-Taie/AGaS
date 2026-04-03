@@ -20,6 +20,8 @@ import AgentRunsPage from "@/pages/agent-runs";
 import ConnectionsPage from "@/pages/connections";
 import SettingsPage from "@/pages/settings";
 import ApprovalsPage from "@/pages/approvals";
+import SchedulesPage from "@/pages/schedules";
+import RunLivePage from "@/pages/run-live";
 import NotFound from "@/pages/not-found";
 
 import { useGetMe } from "@workspace/api-client-react";
@@ -138,9 +140,11 @@ function ClerkProviderWithRoutes() {
             <Route path="/agents/:id"><ProtectedRoute component={AgentDetailPage} /></Route>
             <Route path="/runs"><ProtectedRoute component={RunsPage} /></Route>
             <Route path="/runs/:id"><ProtectedRoute component={RunDetailPage} /></Route>
+            <Route path="/runs/:id/live"><ProtectedRoute component={RunLivePage} /></Route>
             <Route path="/connections"><ProtectedRoute component={ConnectionsPage} /></Route>
             <Route path="/settings"><ProtectedRoute component={SettingsPage} /></Route>
             <Route path="/approvals"><ProtectedRoute component={ApprovalsPage} /></Route>
+            <Route path="/schedules"><ProtectedRoute component={SchedulesPage} /></Route>
             
             <Route component={NotFound} />
           </Switch>

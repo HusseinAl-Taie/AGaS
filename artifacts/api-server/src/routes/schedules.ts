@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, scheduledTriggersTable, agentsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+import { scheduleJob, unscheduleJob } from "../lib/scheduler";
 
 const router: IRouter = Router();
 
@@ -37,6 +38,11 @@ router.post("/schedules", requireAuth, async (req, res): Promise<void> => {
     .values({ agentId, tenantId: req.tenantId, cronExpression, inputTemplate, enabled })
     .returning();
 
+  // Register with cron engine if enabled
+  if (schedule.enabled) {
+    scheduleJob(schedule.id, schedule.cronExpression);
+  }
+
   res.status(201).json(schedule);
 });
 
@@ -64,6 +70,13 @@ router.put("/schedules/:scheduleId", requireAuth, async (req, res): Promise<void
     .where(and(eq(scheduledTriggersTable.id, scheduleId), eq(scheduledTriggersTable.tenantId, req.tenantId)))
     .returning();
 
+  // Sync cron engine with new state
+  if (schedule.enabled) {
+    scheduleJob(schedule.id, schedule.cronExpression);
+  } else {
+    unscheduleJob(schedule.id);
+  }
+
   res.json(schedule);
 });
 
@@ -79,6 +92,9 @@ router.delete("/schedules/:scheduleId", requireAuth, async (req, res): Promise<v
     res.status(404).json({ error: "Schedule not found" });
     return;
   }
+
+  // Remove from cron engine
+  unscheduleJob(scheduleId);
 
   res.json(schedule);
 });

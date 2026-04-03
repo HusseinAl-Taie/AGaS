@@ -15,6 +15,7 @@ import {
   Activity,
   Box,
   Cable,
+  Calendar,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -29,6 +30,7 @@ const navigation = [
   { name: "Agents", href: "/agents", icon: Box },
   { name: "Runs", href: "/runs", icon: Activity },
   { name: "Approvals", href: "/approvals", icon: ShieldAlert },
+  { name: "Schedules", href: "/schedules", icon: Calendar },
   { name: "Connections", href: "/connections", icon: Cable },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
