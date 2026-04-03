@@ -3,6 +3,8 @@ import { db, agentRunsTable, agentsTable, runStatusEnum } from "@workspace/db";
 import { eq, and, desc, count } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { enqueueAgentRun } from "../lib/queue";
+import { publishRunEvent } from "../lib/runEvents";
+import { enqueueWebhookDeliveries } from "../lib/webhookQueue";
 
 type RunStatus = (typeof runStatusEnum.enumValues)[number];
 
@@ -113,6 +115,21 @@ router.post("/runs/:runId/cancel", requireAuth, async (req, res): Promise<void> 
     .set({ status: "cancelled", completedAt: new Date() })
     .where(and(eq(agentRunsTable.id, runId), eq(agentRunsTable.tenantId, req.tenantId)))
     .returning();
+
+  // Notify SSE subscribers about cancellation
+  await publishRunEvent(runId, {
+    type: "done",
+    payload: { status: "cancelled", runId },
+  }).catch(() => {/* non-critical — Redis may not have subscribers */});
+
+  // Trigger webhook delivery for run.cancelled event
+  await enqueueWebhookDeliveries({
+    tenantId: req.tenantId,
+    agentId: updated.agentId,
+    runId,
+    event: "run.cancelled",
+    payload: { status: "cancelled" },
+  }).catch(() => {/* non-critical — webhook queue failure should not fail the cancel response */});
 
   res.json(updated);
 });

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import cron from "node-cron";
 import { db, scheduledTriggersTable, agentsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -20,6 +21,11 @@ router.post("/schedules", requireAuth, async (req, res): Promise<void> => {
 
   if (!agentId || !cronExpression) {
     res.status(400).json({ error: "agentId and cronExpression are required" });
+    return;
+  }
+
+  if (!cron.validate(cronExpression as string)) {
+    res.status(400).json({ error: "Invalid cron expression" });
     return;
   }
 
@@ -63,6 +69,10 @@ router.put("/schedules/:scheduleId", requireAuth, async (req, res): Promise<void
 
   const updates: Partial<typeof scheduledTriggersTable.$inferInsert> = {};
   if (req.body.cronExpression !== undefined) {
+    if (!cron.validate(req.body.cronExpression as string)) {
+      res.status(400).json({ error: "Invalid cron expression" });
+      return;
+    }
     updates.cronExpression = req.body.cronExpression;
     // Recompute nextRunAt when cron expression changes
     const nextRunAt = computeNextRunAt(req.body.cronExpression as string);

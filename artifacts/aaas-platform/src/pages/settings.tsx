@@ -199,7 +199,8 @@ export default function SettingsPage() {
                         <SelectContent>
                           <SelectItem value="run.completed">Run Completed</SelectItem>
                           <SelectItem value="run.failed">Run Failed</SelectItem>
-                          <SelectItem value="run.awaiting_approval">Run Awaiting Approval</SelectItem>
+                          <SelectItem value="approval.required">Run Awaiting Approval</SelectItem>
+                          <SelectItem value="run.cancelled">Run Cancelled</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
