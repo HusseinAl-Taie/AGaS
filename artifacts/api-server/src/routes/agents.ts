@@ -134,6 +134,11 @@ router.put("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
   res.json(updated);
 });
 
+/**
+ * DELETE /agents/:agentId — soft-archive (status → "archived").
+ * Returns 200 + the updated Agent so the client can reflect the new state.
+ * Hard-delete is intentionally avoided: agent_runs FK references agents.id.
+ */
 router.delete("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
   const agentId = Array.isArray(req.params.agentId) ? req.params.agentId[0] : req.params.agentId;
 
@@ -147,11 +152,13 @@ router.delete("/agents/:agentId", requireAuth, async (req, res): Promise<void> =
     return;
   }
 
-  await db
-    .delete(agentsTable)
-    .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId)));
+  const [archived] = await db
+    .update(agentsTable)
+    .set({ status: "archived" })
+    .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId)))
+    .returning();
 
-  res.status(204).send();
+  res.json(archived);
 });
 
 /**
