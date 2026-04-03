@@ -94,7 +94,19 @@ export function unscheduleJob(scheduleId: string): void {
   }
 }
 
+/**
+ * Initialize the cron scheduler.
+ *
+ * In multi-replica deployments, set `SCHEDULER_ENABLED=false` on all but one
+ * instance to avoid duplicate cron fires. A future enhancement could use a
+ * distributed lock (e.g. Redis SETNX) for leader election.
+ */
 export async function initScheduler(): Promise<void> {
+  if (process.env.SCHEDULER_ENABLED === "false") {
+    logger.info("Scheduler disabled via SCHEDULER_ENABLED=false — skipping init");
+    return;
+  }
+
   const schedules = await db
     .select()
     .from(scheduledTriggersTable)

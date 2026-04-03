@@ -126,6 +126,11 @@ export default function RunLivePage() {
             setDone(true);
             queryClient.invalidateQueries({ queryKey: getGetRunQueryKey(runId) });
             es.close();
+          } else if (newStatus === "awaiting_approval") {
+            // Run is paused — close stream and redirect to approval queue
+            setDone(true);
+            queryClient.invalidateQueries({ queryKey: getGetRunQueryKey(runId) });
+            es.close();
           }
         }
       } catch {
