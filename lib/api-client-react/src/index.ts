@@ -1,7 +1,7 @@
-// NOTE: The `streamRun` / `useStreamRun` exports are included here from the generated
-// client but should NOT be used — the endpoint returns text/event-stream (SSE) which
-// requires the native EventSource API, not a React Query fetch hook.
-// Usage: new EventSource(`${BASE_URL}api/runs/${runId}/stream`)
+// NOTE: The SSE stream endpoint (GET /api/runs/:runId/stream) must be consumed via the
+// native browser EventSource API. The streamRun/useStreamRun React Query hooks have been
+// intentionally removed from the generated output. Only getStreamRunUrl is exported for
+// convenience. Usage: new EventSource(getStreamRunUrl(runId))
 export * from "./generated/api";
 export * from "./generated/api.schemas";
 export { setBaseUrl, setAuthTokenGetter, customFetch } from "./custom-fetch";
