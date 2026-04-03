@@ -3,6 +3,9 @@ import { logger } from "./lib/logger";
 import { startWorker } from "./worker/index";
 import { startWebhookWorker } from "./lib/webhookQueue";
 import { initScheduler } from "./lib/scheduler";
+import { db, webhooksTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { randomBytes } from "crypto";
 
 const rawPort = process.env["PORT"];
 
@@ -28,6 +31,32 @@ const webhookWorker = startWebhookWorker();
 initScheduler().catch((err) => {
   logger.error({ err }, "Failed to initialize scheduler");
 });
+
+// One-time backfill: populate signing_secret for legacy webhook rows that have an empty value.
+// This ensures they can deliver again after the signing_secret column was added.
+async function backfillWebhookSigningSecrets() {
+  try {
+    const legacyWebhooks = await db
+      .select({ id: webhooksTable.id })
+      .from(webhooksTable)
+      .where(eq(webhooksTable.signingSecret, ""));
+
+    if (legacyWebhooks.length === 0) return;
+
+    for (const wh of legacyWebhooks) {
+      const newSecret = randomBytes(32).toString("hex");
+      await db
+        .update(webhooksTable)
+        .set({ signingSecret: newSecret })
+        .where(eq(webhooksTable.id, wh.id));
+    }
+    logger.info({ count: legacyWebhooks.length }, "Backfilled signing_secret for legacy webhooks — rotate via Settings > Webhooks");
+  } catch (err) {
+    logger.error({ err }, "Failed to backfill webhook signing secrets");
+  }
+}
+
+backfillWebhookSigningSecrets();
 
 app.listen(port, (err) => {
   if (err) {

@@ -478,5 +478,20 @@ export class AgentRunner {
         completedAt: new Date(),
       })
       .where(and(eq(agentRunsTable.id, this.runId), eq(agentRunsTable.tenantId, this.tenantId)));
+
+    // Emit SSE done event so live viewers are notified
+    await publishRunEvent(this.runId, {
+      type: "done",
+      payload: { status: "failed", error },
+    }).catch(() => {/* non-critical */});
+
+    // Enqueue run.failed webhook
+    await enqueueWebhookDelivery({
+      tenantId: this.tenantId,
+      agentId: this.agentId,
+      runId: this.runId,
+      event: "run.failed",
+      payload: { status: "failed", error },
+    }).catch(() => {/* non-critical */});
   }
 }
