@@ -209,11 +209,12 @@ export class AgentRunner {
             .map((t) => `${t.name}(${JSON.stringify(t.input)})`)
             .join(", ");
 
-          steps.push({
-            type: "thought",
+          const approvalThoughtStep = {
+            type: "thought" as const,
             content: `Awaiting human approval to execute: ${toolSummary}`,
             timestamp: new Date().toISOString(),
-          });
+          };
+          steps.push(approvalThoughtStep);
 
           const pendingState: PendingState = {
             messages: [...messages, { role: "assistant", content: assistantContent }],
@@ -231,6 +232,13 @@ export class AgentRunner {
               output: pendingState as unknown as Record<string, unknown>,
             })
             .where(and(eq(agentRunsTable.id, this.runId), eq(agentRunsTable.tenantId, this.tenantId)));
+
+          // Emit the approval thought step as SSE before the status event
+          await publishRunEvent(this.runId, {
+            type: "step",
+            payload: { step: approvalThoughtStep, totalTokens, costCents: Math.round(costCents) },
+          });
+          this.lastEmittedStepCount = steps.length;
 
           // Notify SSE subscribers and fire webhook
           await publishRunEvent(this.runId, {

@@ -80,6 +80,20 @@ router.get("/runs/:runId/stream", requireAuth, async (req, res): Promise<void> =
         // ignore malformed messages
       }
     });
+
+    // Race-condition guard: re-check run status after subscribing.
+    // If the run finished between the initial status check and the Redis subscribe,
+    // the terminal event would have already been published and we'd hang.
+    const [currentRun] = await db
+      .select({ status: agentRunsTable.status })
+      .from(agentRunsTable)
+      .where(and(eq(agentRunsTable.id, runId), eq(agentRunsTable.tenantId, req.tenantId)));
+
+    if (currentRun && terminalStatuses.includes(currentRun.status)) {
+      res.write(`data: ${JSON.stringify({ type: "done", payload: { status: currentRun.status } })}\n\n`);
+      cleanup();
+      res.end();
+    }
   } catch (err) {
     cleanup();
     res.write(`data: ${JSON.stringify({ type: "error", payload: { message: "Stream unavailable" } })}\n\n`);

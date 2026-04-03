@@ -332,6 +332,7 @@ export const ApproveRunResponse = zod.object({
 /**
  * Server-Sent Events (SSE) stream for a run. Emits `step`, `status`, and `done` events.
 Each event is a JSON-encoded `RunStreamEvent` object.
+NOTE: Use the native EventSource API to consume this endpoint — not the generated React Query hook.
 
  * @summary Stream live run events via SSE
  */
