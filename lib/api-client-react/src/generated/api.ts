@@ -39,6 +39,7 @@ import type {
   OnboardRequest,
   Schedule,
   ScheduleList,
+  TriggerAgentRun429,
   TriggerRunRequest,
   UpdateAgentRequest,
   UpdateMcpConnectionRequest,
@@ -822,7 +823,7 @@ export const triggerAgentRun = async (
 };
 
 export const getTriggerAgentRunMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | TriggerAgentRun429>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -863,13 +864,15 @@ export type TriggerAgentRunMutationResult = NonNullable<
   Awaited<ReturnType<typeof triggerAgentRun>>
 >;
 export type TriggerAgentRunMutationBody = BodyType<TriggerRunRequest>;
-export type TriggerAgentRunMutationError = ErrorType<ErrorResponse>;
+export type TriggerAgentRunMutationError = ErrorType<
+  ErrorResponse | TriggerAgentRun429
+>;
 
 /**
  * @summary Trigger an agent run
  */
 export const useTriggerAgentRun = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | TriggerAgentRun429>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1143,18 +1146,92 @@ export const useApproveRun = <
 
 /**
  * Server-Sent Events (SSE) stream for a run. Emits `step`, `status`, and `done` events.
- * Each event is a JSON-encoded `RunStreamEvent` object.
- *
- * NOTE: Use the native browser EventSource API to consume this endpoint.
- * The React Query hook (streamRun/useStreamRun) has been intentionally excluded
- * from codegen output because fetch-based clients cannot consume SSE streams.
- * See run-live.tsx for the correct EventSource usage pattern.
- *
- * @summary Stream live run events via SSE (EventSource only)
+Each event is a JSON-encoded `RunStreamEvent` object.
+NOTE: Use the native EventSource API to consume this endpoint — not the generated React Query hook.
+
+ * @summary Stream live run events via SSE
  */
 export const getStreamRunUrl = (runId: string) => {
   return `/api/runs/${runId}/stream`;
 };
+
+export const streamRun = async (
+  runId: string,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getStreamRunUrl(runId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getStreamRunQueryKey = (runId: string) => {
+  return [`/api/runs/${runId}/stream`] as const;
+};
+
+export const getStreamRunQueryOptions = <
+  TData = Awaited<ReturnType<typeof streamRun>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  runId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof streamRun>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getStreamRunQueryKey(runId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof streamRun>>> = ({
+    signal,
+  }) => streamRun(runId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!runId,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof streamRun>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type StreamRunQueryResult = NonNullable<
+  Awaited<ReturnType<typeof streamRun>>
+>;
+export type StreamRunQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Stream live run events via SSE
+ */
+
+export function useStreamRun<
+  TData = Awaited<ReturnType<typeof streamRun>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  runId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof streamRun>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getStreamRunQueryOptions(runId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Cancel a running agent

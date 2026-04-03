@@ -1,14 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, agentsTable, agentRunsTable, tenantsTable } from "@workspace/db";
-import { eq, and, desc, count, inArray } from "drizzle-orm";
+import { db, agentsTable, agentRunsTable } from "@workspace/db";
+import { eq, and, desc, count, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+import { rateLimitRuns } from "../middlewares/rateLimitRuns";
 import { enqueueAgentRun } from "../lib/queue";
-
-const CONCURRENT_RUN_LIMITS: Record<string, number> = {
-  free: 5,
-  pro: 50,
-  enterprise: Infinity,
-};
 
 type AgentStatus = "active" | "paused" | "archived";
 
@@ -55,8 +50,8 @@ router.post("/agents", requireAuth, async (req, res): Promise<void> => {
     approvalMode = "auto",
   } = req.body;
 
-  if (!name) {
-    res.status(400).json({ error: "name is required" });
+  if (!name || typeof name !== "string" || name.trim().length === 0) {
+    res.status(400).json({ error: "Agent name is required" });
     return;
   }
 
@@ -64,7 +59,7 @@ router.post("/agents", requireAuth, async (req, res): Promise<void> => {
     .insert(agentsTable)
     .values({
       tenantId: req.tenantId,
-      name,
+      name: name.trim(),
       description,
       systemPrompt,
       model,
@@ -97,6 +92,18 @@ router.get("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
 router.put("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
   const agentId = Array.isArray(req.params.agentId) ? req.params.agentId[0] : req.params.agentId;
 
+  const {
+    name,
+    description,
+    systemPrompt,
+    model,
+    tools,
+    maxSteps,
+    maxBudgetCents,
+    approvalMode,
+    status,
+  } = req.body;
+
   const [existing] = await db
     .select()
     .from(agentsTable)
@@ -107,114 +114,148 @@ router.put("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  type AgentInsert = typeof agentsTable.$inferInsert;
-  const updates: Partial<AgentInsert> = {};
-  if (req.body.name !== undefined) updates.name = req.body.name as AgentInsert["name"];
-  if (req.body.description !== undefined) updates.description = req.body.description as AgentInsert["description"];
-  if (req.body.systemPrompt !== undefined) updates.systemPrompt = req.body.systemPrompt as AgentInsert["systemPrompt"];
-  if (req.body.model !== undefined) updates.model = req.body.model as AgentInsert["model"];
-  if (req.body.tools !== undefined) updates.tools = req.body.tools as AgentInsert["tools"];
-  if (req.body.maxSteps !== undefined) updates.maxSteps = req.body.maxSteps as AgentInsert["maxSteps"];
-  if (req.body.maxBudgetCents !== undefined) updates.maxBudgetCents = req.body.maxBudgetCents as AgentInsert["maxBudgetCents"];
-  if (req.body.approvalMode !== undefined) updates.approvalMode = req.body.approvalMode as AgentInsert["approvalMode"];
-  if (req.body.status !== undefined) {
-    const validAgentStatuses: AgentStatus[] = ["active", "paused", "archived"];
-    if (validAgentStatuses.includes(req.body.status as AgentStatus)) {
-      updates.status = req.body.status as AgentStatus;
-    }
-  }
+  const updates: Record<string, unknown> = {};
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (systemPrompt !== undefined) updates.systemPrompt = systemPrompt;
+  if (model !== undefined) updates.model = model;
+  if (tools !== undefined) updates.tools = tools;
+  if (maxSteps !== undefined) updates.maxSteps = maxSteps;
+  if (maxBudgetCents !== undefined) updates.maxBudgetCents = maxBudgetCents;
+  if (approvalMode !== undefined) updates.approvalMode = approvalMode;
+  if (status !== undefined) updates.status = status;
 
-  const [agent] = await db
+  const [updated] = await db
     .update(agentsTable)
     .set(updates)
     .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId)))
     .returning();
 
-  res.json(agent);
+  res.json(updated);
 });
 
 router.delete("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
   const agentId = Array.isArray(req.params.agentId) ? req.params.agentId[0] : req.params.agentId;
 
-  const [agent] = await db
-    .update(agentsTable)
-    .set({ status: "archived" })
-    .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId)))
-    .returning();
+  const [existing] = await db
+    .select()
+    .from(agentsTable)
+    .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId)));
 
-  if (!agent) {
+  if (!existing) {
     res.status(404).json({ error: "Agent not found" });
     return;
   }
 
-  res.json(agent);
+  await db
+    .delete(agentsTable)
+    .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId)));
+
+  res.status(204).send();
 });
 
-router.post("/agents/:agentId/run", requireAuth, async (req, res): Promise<void> => {
-  const agentId = Array.isArray(req.params.agentId) ? req.params.agentId[0] : req.params.agentId;
+/**
+ * POST /agents/:agentId/run
+ *
+ * Triggers a new agent run. Rate-limited by the `rateLimitRuns` middleware which
+ * attaches `req.tenantPlan` and `req.tenantRunLimit`. The count check and insert
+ * are performed atomically inside a single DB transaction protected by a per-tenant
+ * PostgreSQL advisory lock to prevent race conditions under concurrent requests.
+ */
+router.post(
+  "/agents/:agentId/run",
+  requireAuth,
+  rateLimitRuns,
+  async (req, res): Promise<void> => {
+    const agentId = Array.isArray(req.params.agentId)
+      ? req.params.agentId[0]
+      : req.params.agentId;
 
-  const [[agent], [tenant], [activeRunsResult]] = await Promise.all([
-    db
+    const [agent] = await db
       .select()
       .from(agentsTable)
-      .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId))),
-    db
-      .select({ plan: tenantsTable.plan })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, req.tenantId)),
-    db
-      .select({ count: count() })
-      .from(agentRunsTable)
-      .where(
-        and(
-          eq(agentRunsTable.tenantId, req.tenantId),
-          inArray(agentRunsTable.status, ["running", "queued"])
-        )
-      ),
-  ]);
+      .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId)));
 
-  if (!agent) {
-    res.status(404).json({ error: "Agent not found" });
-    return;
+    if (!agent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+
+    if (agent.status !== "active") {
+      res.status(400).json({ error: "Agent must be active to run" });
+      return;
+    }
+
+    const { input = {}, trigger = "manual" } = req.body;
+    const limit = req.tenantRunLimit;
+    const plan = req.tenantPlan;
+
+    // Atomically check concurrent run count + insert using a per-tenant advisory lock.
+    // pg_advisory_xact_lock serializes all requests for the same tenant — the lock is
+    // held until the transaction commits or rolls back, preventing TOCTOU races.
+    let run: typeof agentRunsTable.$inferSelect;
+
+    try {
+      run = await db.transaction(async (tx) => {
+        // Hash tenant UUID to a stable bigint for the advisory lock key
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(('x' || substr(md5(${req.tenantId}), 1, 16))::bit(64)::bigint)`
+        );
+
+        const [{ activeCount }] = await tx
+          .select({ activeCount: count() })
+          .from(agentRunsTable)
+          .where(
+            and(
+              eq(agentRunsTable.tenantId, req.tenantId),
+              inArray(agentRunsTable.status, ["running", "queued"])
+            )
+          );
+
+        const active = Number(activeCount);
+
+        if (limit !== Infinity && active >= limit) {
+          const err = new Error("rate_limit") as Error & {
+            isRateLimit: boolean;
+            active: number;
+          };
+          err.isRateLimit = true;
+          err.active = active;
+          throw err;
+        }
+
+        const [newRun] = await tx
+          .insert(agentRunsTable)
+          .values({
+            agentId,
+            tenantId: req.tenantId,
+            trigger,
+            input,
+            status: "queued",
+          })
+          .returning();
+
+        return newRun;
+      });
+    } catch (err) {
+      if ((err as { isRateLimit?: boolean }).isRateLimit) {
+        const e = err as { active: number };
+        res.status(429).json({
+          error: "Concurrent run limit reached",
+          message: `Your ${plan} plan allows ${limit} concurrent runs. You currently have ${e.active} active. Please wait for a run to complete or upgrade your plan.`,
+          plan,
+          limit,
+          active: e.active,
+        });
+        return;
+      }
+      throw err;
+    }
+
+    await enqueueAgentRun({ runId: run.id, agentId: run.agentId, tenantId: run.tenantId });
+
+    res.status(201).json(run);
   }
-
-  if (agent.status !== "active") {
-    res.status(400).json({ error: "Agent must be active to run" });
-    return;
-  }
-
-  // Per-tenant concurrent run rate limiting
-  const plan = tenant?.plan ?? "free";
-  const limit = CONCURRENT_RUN_LIMITS[plan] ?? CONCURRENT_RUN_LIMITS.free;
-  const activeCount = Number(activeRunsResult?.count ?? 0);
-
-  if (activeCount >= limit) {
-    res.status(429).json({
-      error: "Concurrent run limit reached",
-      message: `Your ${plan} plan allows ${limit === Infinity ? "unlimited" : limit} concurrent runs. You currently have ${activeCount} active. Please wait for a run to complete or upgrade your plan.`,
-      plan,
-      limit: limit === Infinity ? null : limit,
-      active: activeCount,
-    });
-    return;
-  }
-
-  const { input = {}, trigger = "manual" } = req.body;
-
-  const [run] = await db
-    .insert(agentRunsTable)
-    .values({
-      agentId,
-      tenantId: req.tenantId,
-      trigger,
-      input,
-      status: "queued",
-    })
-    .returning();
-
-  await enqueueAgentRun({ runId: run.id, agentId: run.agentId, tenantId: run.tenantId });
-
-  res.status(201).json(run);
-});
+);
 
 export default router;

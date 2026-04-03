@@ -414,6 +414,14 @@ export const ListAgentsStatus = {
   archived: "archived",
 } as const;
 
+export type TriggerAgentRun429 = {
+  error: string;
+  message: string;
+  plan: string;
+  limit: number;
+  active: number;
+};
+
 export type ListRunsParams = {
   agentId?: string;
   status?: ListRunsStatus;

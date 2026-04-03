@@ -283,12 +283,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentRun"
+        "400":
+          description: Agent not active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Agent not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Concurrent run limit reached
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, message, plan, limit, active]
+                properties:
+                  error:
+                    type: string
+                    example: Concurrent run limit reached
+                  message:
+                    type: string
+                    example: Your free plan allows 5 concurrent runs.
+                  plan:
+                    type: string
+                    example: free
+                  limit:
+                    type: number
+                    example: 5
+                  active:
+                    type: number
+                    example: 5
 
   /runs:
     get:
