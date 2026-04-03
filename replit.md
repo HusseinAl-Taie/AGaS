@@ -115,3 +115,16 @@ lib/
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## GitHub Repository
+
+The project is hosted at: https://github.com/HusseinAl-Taie/AGaS
+
+To push future changes:
+```bash
+git remote add github "https://$GITHUB_TOKEN@github.com/HusseinAl-Taie/AGaS.git"
+git push github main
+git remote remove github   # remove token from config after push
+```
+
+NOTE: The Replit GitHub OAuth integration was declined. A Personal Access Token stored as `GITHUB_TOKEN` secret is used instead for repository operations.

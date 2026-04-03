@@ -1,8 +1,14 @@
 import { Router, type IRouter } from "express";
-import { db, agentsTable, agentRunsTable } from "@workspace/db";
-import { eq, and, desc, count, sql } from "drizzle-orm";
+import { db, agentsTable, agentRunsTable, tenantsTable } from "@workspace/db";
+import { eq, and, desc, count, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { enqueueAgentRun } from "../lib/queue";
+
+const CONCURRENT_RUN_LIMITS: Record<string, number> = {
+  free: 5,
+  pro: 50,
+  enterprise: Infinity,
+};
 
 type AgentStatus = "active" | "paused" | "archived";
 
@@ -147,10 +153,25 @@ router.delete("/agents/:agentId", requireAuth, async (req, res): Promise<void> =
 router.post("/agents/:agentId/run", requireAuth, async (req, res): Promise<void> => {
   const agentId = Array.isArray(req.params.agentId) ? req.params.agentId[0] : req.params.agentId;
 
-  const [agent] = await db
-    .select()
-    .from(agentsTable)
-    .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId)));
+  const [[agent], [tenant], [activeRunsResult]] = await Promise.all([
+    db
+      .select()
+      .from(agentsTable)
+      .where(and(eq(agentsTable.id, agentId), eq(agentsTable.tenantId, req.tenantId))),
+    db
+      .select({ plan: tenantsTable.plan })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, req.tenantId)),
+    db
+      .select({ count: count() })
+      .from(agentRunsTable)
+      .where(
+        and(
+          eq(agentRunsTable.tenantId, req.tenantId),
+          inArray(agentRunsTable.status, ["running", "queued"])
+        )
+      ),
+  ]);
 
   if (!agent) {
     res.status(404).json({ error: "Agent not found" });
@@ -159,6 +180,22 @@ router.post("/agents/:agentId/run", requireAuth, async (req, res): Promise<void>
 
   if (agent.status !== "active") {
     res.status(400).json({ error: "Agent must be active to run" });
+    return;
+  }
+
+  // Per-tenant concurrent run rate limiting
+  const plan = tenant?.plan ?? "free";
+  const limit = CONCURRENT_RUN_LIMITS[plan] ?? CONCURRENT_RUN_LIMITS.free;
+  const activeCount = Number(activeRunsResult?.count ?? 0);
+
+  if (activeCount >= limit) {
+    res.status(429).json({
+      error: "Concurrent run limit reached",
+      message: `Your ${plan} plan allows ${limit === Infinity ? "unlimited" : limit} concurrent runs. You currently have ${activeCount} active. Please wait for a run to complete or upgrade your plan.`,
+      plan,
+      limit: limit === Infinity ? null : limit,
+      active: activeCount,
+    });
     return;
   }
 
