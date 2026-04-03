@@ -1,15 +1,63 @@
 import { Queue, Worker, type Job } from "bullmq";
 import IORedis from "ioredis";
 import { createHmac } from "crypto";
+import { lookup } from "dns/promises";
 import { db, webhooksTable } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+
+// SSRF guard — block private/loopback/link-local CIDRs and cloud metadata endpoints
+const BLOCKED_HOST_PATTERNS = [
+  /^localhost$/i,
+  /^169\.254\./,       // link-local (AWS metadata etc.)
+  /^10\./,             // RFC-1918
+  /^172\.(1[6-9]|2\d|3[01])\./,  // RFC-1918
+  /^192\.168\./,       // RFC-1918
+  /^127\./,            // loopback
+  /^::1$/,             // IPv6 loopback
+  /^fc00:/i,           // IPv6 unique-local
+  /^fd[0-9a-f]{2}:/i,  // IPv6 unique-local
+];
+
+async function assertNotSsrf(rawUrl: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`Invalid webhook URL: ${rawUrl}`);
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error(`Webhook URL must use http(s), got: ${parsed.protocol}`);
+  }
+
+  const hostname = parsed.hostname;
+  for (const pattern of BLOCKED_HOST_PATTERNS) {
+    if (pattern.test(hostname)) {
+      throw new Error(`Webhook URL targets a private/reserved address: ${hostname}`);
+    }
+  }
+
+  // DNS resolution check — block if the resolved IP is private
+  try {
+    const { address } = await lookup(hostname);
+    for (const pattern of BLOCKED_HOST_PATTERNS) {
+      if (pattern.test(address)) {
+        throw new Error(`Webhook URL resolves to a private address (${address}): ${hostname}`);
+      }
+    }
+  } catch (dnsErr: unknown) {
+    if (dnsErr instanceof Error && dnsErr.message.startsWith("Webhook URL")) throw dnsErr;
+    // DNS failure — let fetch handle it (not a security concern)
+  }
+}
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 
 export type WebhookEvent = "run.completed" | "run.failed" | "approval.required" | "run.cancelled";
 
 export interface WebhookJobData {
+  webhookId: string;
   tenantId: string;
   agentId: string;
   runId: string;
@@ -36,59 +84,82 @@ export const webhookQueue = new Queue<WebhookJobData>("webhook-deliveries", {
   },
 });
 
-export async function enqueueWebhookDelivery(data: WebhookJobData): Promise<void> {
+/**
+ * Find all matching webhooks for the given tenant/agent/event and enqueue
+ * one delivery job per webhook so BullMQ retries each independently.
+ */
+export async function enqueueWebhookDeliveries(data: Omit<WebhookJobData, "webhookId">): Promise<void> {
   try {
-    await webhookQueue.add("deliver", data);
+    const allWebhooks = await db
+      .select()
+      .from(webhooksTable)
+      .where(eq(webhooksTable.tenantId, data.tenantId));
+
+    const matching = allWebhooks.filter((wh) => {
+      if (wh.agentId && wh.agentId !== data.agentId) return false;
+      return (wh.events as string[]).includes(data.event);
+    });
+
+    if (matching.length === 0) return;
+
+    await Promise.all(
+      matching.map((wh) =>
+        webhookQueue.add("deliver", { ...data, webhookId: wh.id })
+      )
+    );
   } catch (err) {
-    logger.error({ err, runId: data.runId }, "Failed to enqueue webhook delivery");
+    logger.error({ err, runId: data.runId }, "Failed to enqueue webhook deliveries");
   }
 }
 
-async function processWebhookJob(job: Job<WebhookJobData>): Promise<void> {
-  const { tenantId, agentId, runId, event, payload } = job.data;
+/** @deprecated Use enqueueWebhookDeliveries */
+export const enqueueWebhookDelivery = enqueueWebhookDeliveries;
 
-  // Find all webhooks for this tenant+agent that subscribe to this event
-  const allWebhooks = await db
+async function processWebhookJob(job: Job<WebhookJobData>): Promise<void> {
+  const { webhookId, agentId, runId, event, payload } = job.data;
+
+  const [wh] = await db
     .select()
     .from(webhooksTable)
-    .where(
-      or(
-        eq(webhooksTable.tenantId, tenantId),
-      )
-    );
+    .where(eq(webhooksTable.id, webhookId));
 
-  const matching = allWebhooks.filter((wh) => {
-    if (wh.tenantId !== tenantId) return false;
-    if (wh.agentId && wh.agentId !== agentId) return false;
-    return (wh.events as string[]).includes(event);
+  if (!wh) {
+    // Webhook deleted — nothing to do, don't retry
+    return;
+  }
+
+  const body = JSON.stringify({
+    event,
+    runId,
+    agentId,
+    ...payload,
+    timestamp: new Date().toISOString(),
   });
 
-  if (matching.length === 0) return;
+  // Block SSRF before making the outbound request
+  await assertNotSsrf(wh.url);
 
-  const body = JSON.stringify({ event, runId, agentId, ...payload, timestamp: new Date().toISOString() });
+  // Sign with the raw signing secret (not the hash)
+  const signingKey = wh.signingSecret || wh.secretHash;
+  const sig = createHmac("sha256", signingKey).update(body).digest("hex");
 
-  await Promise.allSettled(
-    matching.map(async (wh) => {
-      const sig = createHmac("sha256", wh.secretHash).update(body).digest("hex");
+  const resp = await fetch(wh.url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-AaaS-Signature": `sha256=${sig}`,
+      "X-AaaS-Event": event,
+    },
+    body,
+    signal: AbortSignal.timeout(15000),
+  });
 
-      const resp = await fetch(wh.url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-AaaS-Signature": `sha256=${sig}`,
-          "X-AaaS-Event": event,
-        },
-        body,
-        signal: AbortSignal.timeout(15000),
-      });
+  if (!resp.ok) {
+    // Throw so BullMQ marks the job failed and applies exponential backoff retry
+    throw new Error(`Webhook ${webhookId} responded ${resp.status} ${resp.statusText}`);
+  }
 
-      if (!resp.ok) {
-        throw new Error(`Webhook ${wh.id} responded ${resp.status}`);
-      }
-
-      logger.info({ webhookId: wh.id, event, runId }, "Webhook delivered");
-    })
-  );
+  logger.info({ webhookId, event, runId }, "Webhook delivered");
 }
 
 export function startWebhookWorker() {
@@ -101,7 +172,7 @@ export function startWebhookWorker() {
   });
 
   worker.on("failed", (job, err) => {
-    logger.error({ jobId: job?.id, err }, "Webhook delivery failed");
+    logger.error({ jobId: job?.id, webhookId: job?.data.webhookId, err }, "Webhook delivery failed");
   });
 
   logger.info("Webhook delivery worker started");

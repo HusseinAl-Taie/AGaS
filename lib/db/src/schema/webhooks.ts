@@ -11,6 +11,7 @@ export const webhooksTable = pgTable("webhooks", {
   url: text("url").notNull(),
   events: text("events").array().notNull().default([]),
   secretHash: text("secret_hash").notNull(),
+  signingSecret: text("signing_secret").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

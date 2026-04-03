@@ -1,4 +1,5 @@
 import cron, { type ScheduledTask } from "node-cron";
+import { CronExpressionParser } from "cron-parser";
 import { db, scheduledTriggersTable, agentRunsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
@@ -11,6 +12,19 @@ function makeRunInput(inputTemplate: unknown): Record<string, unknown> {
     return inputTemplate as Record<string, unknown>;
   }
   return {};
+}
+
+/**
+ * Compute the next fire time for a cron expression using cron-parser.
+ * Returns null if the expression is invalid or unparseable.
+ */
+export function computeNextRunAt(cronExpr: string, after: Date = new Date()): Date | null {
+  try {
+    const interval = CronExpressionParser.parse(cronExpr, { currentDate: after });
+    return interval.next().toDate();
+  } catch {
+    return null;
+  }
 }
 
 async function fireSchedule(scheduleId: string): Promise<void> {
@@ -43,10 +57,11 @@ async function fireSchedule(scheduleId: string): Promise<void> {
     tenantId: schedule.tenantId,
   });
 
-  // Update nextRunAt (node-cron fires sync; approximate next by re-parsing)
+  // Compute and persist actual next fire time (not "now")
+  const nextRunAt = computeNextRunAt(schedule.cronExpression);
   await db
     .update(scheduledTriggersTable)
-    .set({ nextRunAt: new Date() })
+    .set({ nextRunAt: nextRunAt ?? undefined })
     .where(eq(scheduledTriggersTable.id, scheduleId));
 }
 
@@ -87,6 +102,17 @@ export async function initScheduler(): Promise<void> {
 
   for (const s of schedules) {
     scheduleJob(s.id, s.cronExpression);
+
+    // Backfill nextRunAt if missing
+    if (!s.nextRunAt) {
+      const nextRunAt = computeNextRunAt(s.cronExpression);
+      if (nextRunAt) {
+        await db
+          .update(scheduledTriggersTable)
+          .set({ nextRunAt })
+          .where(eq(scheduledTriggersTable.id, s.id));
+      }
+    }
   }
 
   logger.info({ count: schedules.length }, "Scheduler initialized");

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, scheduledTriggersTable, agentsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
-import { scheduleJob, unscheduleJob } from "../lib/scheduler";
+import { scheduleJob, unscheduleJob, computeNextRunAt } from "../lib/scheduler";
 
 const router: IRouter = Router();
 
@@ -33,9 +33,11 @@ router.post("/schedules", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  const nextRunAt = computeNextRunAt(cronExpression);
+
   const [schedule] = await db
     .insert(scheduledTriggersTable)
-    .values({ agentId, tenantId: req.tenantId, cronExpression, inputTemplate, enabled })
+    .values({ agentId, tenantId: req.tenantId, cronExpression, inputTemplate, enabled, nextRunAt: nextRunAt ?? undefined })
     .returning();
 
   // Register with cron engine if enabled
@@ -60,7 +62,12 @@ router.put("/schedules/:scheduleId", requireAuth, async (req, res): Promise<void
   }
 
   const updates: Partial<typeof scheduledTriggersTable.$inferInsert> = {};
-  if (req.body.cronExpression !== undefined) updates.cronExpression = req.body.cronExpression;
+  if (req.body.cronExpression !== undefined) {
+    updates.cronExpression = req.body.cronExpression;
+    // Recompute nextRunAt when cron expression changes
+    const nextRunAt = computeNextRunAt(req.body.cronExpression as string);
+    if (nextRunAt) updates.nextRunAt = nextRunAt;
+  }
   if (req.body.inputTemplate !== undefined) updates.inputTemplate = req.body.inputTemplate;
   if (req.body.enabled !== undefined) updates.enabled = req.body.enabled;
 

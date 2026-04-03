@@ -6,14 +6,19 @@ import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
+// Strips both secretHash and signingSecret before sending to clients
+function sanitize(webhook: typeof webhooksTable.$inferSelect) {
+  const { secretHash: _sh, signingSecret: _ss, ...safe } = webhook;
+  return safe;
+}
+
 router.get("/webhooks", requireAuth, async (req, res): Promise<void> => {
   const webhooks = await db
     .select()
     .from(webhooksTable)
     .where(eq(webhooksTable.tenantId, req.tenantId));
 
-  const safe = webhooks.map(({ secretHash: _s, ...rest }) => rest);
-  res.json({ webhooks: safe });
+  res.json({ webhooks: webhooks.map(sanitize) });
 });
 
 router.post("/webhooks", requireAuth, async (req, res): Promise<void> => {
@@ -24,7 +29,8 @@ router.post("/webhooks", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const secretHash = createHash("sha256").update(secret).digest("hex");
+  // secretHash: used for display/identification only; signingSecret: used for HMAC
+  const secretHash = createHash("sha256").update(secret as string).digest("hex");
 
   const [webhook] = await db
     .insert(webhooksTable)
@@ -34,11 +40,11 @@ router.post("/webhooks", requireAuth, async (req, res): Promise<void> => {
       url,
       events,
       secretHash,
+      signingSecret: secret as string,
     })
     .returning();
 
-  const { secretHash: _s, ...safe } = webhook;
-  res.status(201).json(safe);
+  res.status(201).json(sanitize(webhook));
 });
 
 router.get("/webhooks/:webhookId", requireAuth, async (req, res): Promise<void> => {
@@ -54,8 +60,7 @@ router.get("/webhooks/:webhookId", requireAuth, async (req, res): Promise<void> 
     return;
   }
 
-  const { secretHash: _s, ...safe } = webhook;
-  res.json(safe);
+  res.json(sanitize(webhook));
 });
 
 router.put("/webhooks/:webhookId", requireAuth, async (req, res): Promise<void> => {
@@ -71,23 +76,22 @@ router.put("/webhooks/:webhookId", requireAuth, async (req, res): Promise<void> 
     return;
   }
 
-  const updates: Partial<Pick<typeof webhooksTable.$inferInsert, "url" | "events" | "agentId">> = {};
+  const updates: Partial<Pick<typeof webhooksTable.$inferInsert, "url" | "events" | "agentId" | "secretHash" | "signingSecret">> = {};
   if (req.body.url !== undefined) updates.url = req.body.url;
   if (req.body.events !== undefined) updates.events = req.body.events;
   if (req.body.agentId !== undefined) updates.agentId = req.body.agentId;
-
-  const secretHash = req.body.secret
-    ? createHash("sha256").update(req.body.secret as string).digest("hex")
-    : undefined;
+  if (req.body.secret !== undefined) {
+    updates.secretHash = createHash("sha256").update(req.body.secret as string).digest("hex");
+    updates.signingSecret = req.body.secret as string;
+  }
 
   const [webhook] = await db
     .update(webhooksTable)
-    .set(secretHash ? { ...updates, secretHash } : updates)
+    .set(updates)
     .where(and(eq(webhooksTable.id, webhookId), eq(webhooksTable.tenantId, req.tenantId)))
     .returning();
 
-  const { secretHash: _s, ...safe } = webhook;
-  res.json(safe);
+  res.json(sanitize(webhook));
 });
 
 router.delete("/webhooks/:webhookId", requireAuth, async (req, res): Promise<void> => {
@@ -103,8 +107,7 @@ router.delete("/webhooks/:webhookId", requireAuth, async (req, res): Promise<voi
     return;
   }
 
-  const { secretHash: _s, ...safe } = webhook;
-  res.json(safe);
+  res.json(sanitize(webhook));
 });
 
 export default router;
