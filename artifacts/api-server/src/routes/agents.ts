@@ -114,6 +114,24 @@ router.put("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  const VALID_STATUSES: AgentStatus[] = ["active", "paused", "archived"];
+  if (status !== undefined && !VALID_STATUSES.includes(status as AgentStatus)) {
+    res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` });
+    return;
+  }
+
+  const VALID_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-6"];
+  if (model !== undefined && !VALID_MODELS.includes(model as string)) {
+    res.status(400).json({ error: `Invalid model. Must be one of: ${VALID_MODELS.join(", ")}` });
+    return;
+  }
+
+  const VALID_APPROVAL_MODES = ["auto", "human_in_loop"];
+  if (approvalMode !== undefined && !VALID_APPROVAL_MODES.includes(approvalMode as string)) {
+    res.status(400).json({ error: `Invalid approvalMode. Must be one of: ${VALID_APPROVAL_MODES.join(", ")}` });
+    return;
+  }
+
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (description !== undefined) updates.description = description;
@@ -123,7 +141,7 @@ router.put("/agents/:agentId", requireAuth, async (req, res): Promise<void> => {
   if (maxSteps !== undefined) updates.maxSteps = maxSteps;
   if (maxBudgetCents !== undefined) updates.maxBudgetCents = maxBudgetCents;
   if (approvalMode !== undefined) updates.approvalMode = approvalMode;
-  if (status !== undefined) updates.status = status;
+  if (status !== undefined) updates.status = status as AgentStatus;
 
   const [updated] = await db
     .update(agentsTable)

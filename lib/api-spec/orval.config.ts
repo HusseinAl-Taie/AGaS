@@ -37,7 +37,13 @@ export default defineConfig({
           path: path.resolve(apiClientReactSrc, "custom-fetch.ts"),
           name: "customFetch",
         },
-
+        // SSE endpoint must be consumed via native EventSource.
+        // Skip React Query codegen; use getStreamRunUrl() helper from the client index.
+        operations: {
+          streamRun: {
+            skip: true,
+          },
+        },
       },
     },
   },

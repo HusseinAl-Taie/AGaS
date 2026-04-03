@@ -29,6 +29,11 @@ export function setBaseUrl(url: string | null): void {
   _baseUrl = url ? url.replace(/\/+$/, "") : null;
 }
 
+/** Returns the currently configured base URL (without trailing slash). */
+export function getBaseUrl(): string {
+  return _baseUrl ?? "/api";
+}
+
 /**
  * Register a getter that supplies a bearer auth token.  Before every fetch
  * the getter is invoked; when it returns a non-null string, an
