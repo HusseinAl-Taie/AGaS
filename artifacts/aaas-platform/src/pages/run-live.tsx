@@ -107,8 +107,9 @@ export default function RunLivePage() {
           const step = event.payload.step as RunStep;
           if (step) {
             setSteps((prev) => {
-              // Avoid duplicates by checking timestamp
-              if (prev.some((s) => s.timestamp === step.timestamp && s.type === step.type)) {
+              // Deduplicate by timestamp + type + content (content distinguishes steps at the same ms)
+              const key = `${step.timestamp}:${step.type}:${step.content?.slice(0, 60)}`;
+              if (prev.some((s) => `${s.timestamp}:${s.type}:${s.content?.slice(0, 60)}` === key)) {
                 return prev;
               }
               return [...prev, step];
@@ -150,6 +151,7 @@ export default function RunLivePage() {
       {
         onSuccess: () => {
           toast({ title: "Run cancelled" });
+          setStatus("cancelled");
           setDone(true);
           esRef.current?.close();
         },

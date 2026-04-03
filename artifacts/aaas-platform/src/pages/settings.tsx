@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout";
-import { useGetMe, useListWebhooks, useCreateWebhook, useDeleteWebhook, getListWebhooksQueryKey, useRotateApiKey, WebhookEvent } from "@workspace/api-client-react";
+import { useGetMe, useListWebhooks, useCreateWebhook, useUpdateWebhook, useDeleteWebhook, getListWebhooksQueryKey, useRotateApiKey, WebhookEvent } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building, Key, Webhook as WebhookIcon, Trash2, Copy, Check, RefreshCw } from "lucide-react";
+import { Building, Key, Webhook as WebhookIcon, Trash2, Copy, Check, RefreshCw, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const { data: webhooksData, isLoading: webhooksLoading } = useListWebhooks();
   
   const createWebhook = useCreateWebhook();
+  const updateWebhook = useUpdateWebhook();
   const deleteWebhook = useDeleteWebhook();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -73,6 +74,26 @@ export default function SettingsPage() {
           toast({ title: "Webhook deleted" });
           queryClient.invalidateQueries({ queryKey: getListWebhooksQueryKey() });
         }
+      }
+    );
+  };
+
+  const handleRotateSecret = (id: string) => {
+    const newSecret = crypto.randomUUID().replace(/-/g, "");
+    updateWebhook.mutate(
+      { webhookId: id, data: { secret: newSecret } },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Webhook secret rotated",
+            description: `New secret: ${newSecret} — copy it now, it won't be shown again.`,
+            duration: 15000,
+          });
+          queryClient.invalidateQueries({ queryKey: getListWebhooksQueryKey() });
+        },
+        onError: (err) => {
+          toast({ title: "Failed to rotate secret", description: err.message, variant: "destructive" });
+        },
       }
     );
   };
@@ -232,7 +253,7 @@ export default function SettingsPage() {
                     <TableHead>URL</TableHead>
                     <TableHead>Events</TableHead>
                     <TableHead>Created</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
+                    <TableHead className="w-[100px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -247,10 +268,21 @@ export default function SettingsPage() {
                       <TableCell className="text-xs text-muted-foreground">
                         {formatDistanceToNow(parseISO(wh.createdAt))} ago
                       </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteWebhook(wh.id)}>
-                          <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
-                        </Button>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Rotate signing secret"
+                            onClick={() => handleRotateSecret(wh.id)}
+                            disabled={updateWebhook.isPending}
+                          >
+                            <RotateCcw className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteWebhook(wh.id)}>
+                            <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
