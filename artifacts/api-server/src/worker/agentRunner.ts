@@ -34,6 +34,8 @@ export class AgentRunner {
   private runId: string;
   private agentId: string;
   private tenantId: string;
+  /** Tracks how many steps have already been emitted as SSE events */
+  private lastEmittedStepCount = 0;
 
   constructor(runId: string, agentId: string, tenantId: string) {
     this.runId = runId;
@@ -391,14 +393,15 @@ export class AgentRunner {
       })
       .where(and(eq(agentRunsTable.id, this.runId), eq(agentRunsTable.tenantId, this.tenantId)));
 
-    // Emit the latest step as a live event for SSE streaming
-    const latestStep = steps[steps.length - 1];
-    if (latestStep) {
+    // Emit every new step since last save as separate SSE step events
+    const newSteps = steps.slice(this.lastEmittedStepCount);
+    for (const step of newSteps) {
       await publishRunEvent(this.runId, {
         type: "step",
-        payload: { step: latestStep, totalTokens, costCents: Math.round(costCents) },
+        payload: { step, totalTokens, costCents: Math.round(costCents) },
       });
     }
+    this.lastEmittedStepCount = steps.length;
   }
 
   private async updateRun(
@@ -421,6 +424,16 @@ export class AgentRunner {
         completedAt: new Date(),
       })
       .where(and(eq(agentRunsTable.id, this.runId), eq(agentRunsTable.tenantId, this.tenantId)));
+
+    // Flush any new steps that haven't been emitted yet (e.g., final_answer added just before updateRun)
+    const newSteps = steps.slice(this.lastEmittedStepCount);
+    for (const step of newSteps) {
+      await publishRunEvent(this.runId, {
+        type: "step",
+        payload: { step, totalTokens, costCents: Math.round(costCents) },
+      });
+    }
+    this.lastEmittedStepCount = steps.length;
 
     // Publish final status event for SSE streaming
     await publishRunEvent(this.runId, {

@@ -139,9 +139,15 @@ async function processWebhookJob(job: Job<WebhookJobData>): Promise<void> {
   // Block SSRF before making the outbound request
   await assertNotSsrf(wh.url);
 
-  // Sign with the raw signing secret (not the hash)
-  const signingKey = wh.signingSecret || wh.secretHash;
-  const sig = createHmac("sha256", signingKey).update(body).digest("hex");
+  // Require a valid signingSecret — legacy rows with empty string must be rejected
+  // rather than silently signing with the wrong key (secretHash is not the raw secret)
+  if (!wh.signingSecret) {
+    throw new Error(
+      `Webhook ${webhookId} has no signingSecret — please rotate its secret via PUT /api/webhooks/${webhookId} to re-enable deliveries`
+    );
+  }
+
+  const sig = createHmac("sha256", wh.signingSecret).update(body).digest("hex");
 
   const resp = await fetch(wh.url, {
     method: "POST",
