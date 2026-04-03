@@ -65,7 +65,7 @@ export interface WebhookJobData {
   payload: Record<string, unknown>;
 }
 
-const webhookQueueConnection = new IORedis(REDIS_URL, {
+export const webhookQueueConnection = new IORedis(REDIS_URL, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
 });

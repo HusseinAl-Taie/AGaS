@@ -6,6 +6,9 @@ import { initScheduler } from "./lib/scheduler";
 import { db, webhooksTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
+import { redisConnection, agentRunQueue } from "./lib/queue";
+import { runEventPublisher } from "./lib/runEvents";
+import { webhookQueueConnection, webhookQueue } from "./lib/webhookQueue";
 
 const rawPort = process.env["PORT"];
 
@@ -67,15 +70,19 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
 });
 
-// Graceful shutdown
-process.on("SIGTERM", async () => {
-  logger.info("SIGTERM received, shutting down gracefully");
-  await Promise.all([worker.close(), webhookWorker.close()]);
+async function shutdown(signal: string) {
+  logger.info({ signal }, "Received shutdown signal, shutting down gracefully");
+  await Promise.all([
+    worker.close(),
+    webhookWorker.close(),
+    agentRunQueue.close(),
+    webhookQueue.close(),
+    redisConnection.quit().catch(() => {}),
+    runEventPublisher.quit().catch(() => {}),
+    webhookQueueConnection.quit().catch(() => {}),
+  ]);
   process.exit(0);
-});
+}
 
-process.on("SIGINT", async () => {
-  logger.info("SIGINT received, shutting down gracefully");
-  await Promise.all([worker.close(), webhookWorker.close()]);
-  process.exit(0);
-});
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

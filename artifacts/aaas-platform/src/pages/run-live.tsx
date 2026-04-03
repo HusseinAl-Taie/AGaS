@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { AppLayout } from "@/components/layout";
-import { useGetRun, useCancelRun, getGetRunQueryKey } from "@workspace/api-client-react";
+import { useGetRun, useCancelRun, getGetRunQueryKey, type AgentRunDetail } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,14 +78,18 @@ export default function RunLivePage() {
 
   // Seed steps from initial DB data
   useEffect(() => {
-    if (runData && Array.isArray((runData as unknown as { steps?: RunStep[] }).steps)) {
-      const dbSteps = (runData as unknown as { steps: RunStep[] }).steps;
+    if (!runData) return;
+    // useGetRun returns AgentRunDetail which includes a steps array
+    const detail = runData as AgentRunDetail;
+    if (Array.isArray(detail.steps) && detail.steps.length > 0) {
+      // Map stored DB step shape to the local RunStep shape used for rendering
+      const dbSteps = detail.steps as unknown as RunStep[];
       setSteps(dbSteps);
-      setStatus(runData.status);
-      const terminalStatuses = ["completed", "failed", "cancelled", "budget_exceeded"];
-      if (terminalStatuses.includes(runData.status)) {
-        setDone(true);
-      }
+    }
+    setStatus(runData.status);
+    const terminalStatuses = ["completed", "failed", "cancelled", "budget_exceeded"];
+    if (terminalStatuses.includes(runData.status)) {
+      setDone(true);
     }
   }, [runData]);
 
